@@ -121,9 +121,7 @@ class config{
 	// List of domains that point to your servers. Include your tor/i2p
 	// addresses here! Must be a valid URL.
 	const ADDRESSES = [
-		//"Clearnet" => "https://4get.ca",
-		//"Clearnet (alt)" => "https://4get.alt-tld",
-		//"Tor" => "http://4getwebfrq5zr4sxugk6htxvawqehxtdgjrbcn2oslllcol2vepa23yd.onion"
+		//"https://4get.ca",
 	];
 	
 	// Known 4get instances. MUST use the https protocol if your instance uses
