@@ -4,6 +4,79 @@ class bot_protection{
 	
 	public function __construct($frontend, $get, $filters, $page, $output){
 		
+		if(config::RATELIMIT_BURST !== 0){
+			
+			// ratelimit requests per IP
+			if(config::RATELIMIT_IP_SOURCE === false){
+				
+				$source = "r" . $_SERVER["REMOTE_ADDR"];
+			}else{
+				
+				$source = "r" . $_SERVER[explode(";", strtoupper(str_replace("-", "_", config::IP_SOURCE)))[0]];
+			}
+			
+			// counter
+			// resets on every req	
+			$counter = apcu_fetch($source);
+			$counter = (int)$counter + 1;
+			
+			if(
+				(
+					CONFIG::RATELIMIT_PUNISH !== 0 &&
+					$counter > config::RATELIMIT_BURST + 1
+				) &&
+				(
+					(
+						$output === false &&
+						CONFIG::RATELIMIT_PUNISH_API === true
+					) ||
+					$output === true
+				)
+			){
+				
+				$block_time = config::RATELIMIT_TIME + (($counter - 1) * config::RATELIMIT_PUNISH);
+			}else{
+				
+				$block_time = config::RATELIMIT_TIME;
+			}
+			
+			apcu_store($source, $counter, $block_time);
+			
+			if($counter > config::RATELIMIT_BURST){
+				
+				if($output === false){
+					
+					http_response_code(429);
+					echo json_encode([
+						"status" => "You love 4get too much. Try again in " . $this->format_time($block_time) . "."
+					]);
+					die();
+				}
+				
+				$payload = [
+					"timetaken" => microtime(true),
+					"class" => "",
+					"right-left" => "",
+					"right-right" => "",
+					"left" =>
+						'<div class="infobox">' .
+							'<h1>You\'re damaging my calm</h1>' .
+							'You love 4get too much. Try again in <b>' . $this->format_time($block_time) . '</b>.' .
+						'</div>'
+				];
+				
+				$frontend->loadheader(
+					$get,
+					$filters,
+					$page,
+					false
+				);
+				
+				echo $frontend->load("search.html", $payload);
+				die();
+			}
+		}
+				
 		// check if we want captcha
 		if(config::BOT_PROTECTION !== 1){
 			
@@ -255,6 +328,20 @@ class bot_protection{
 		
 		echo $frontend->load("search.html", $payload);
 		die();
+	}
+	
+	private function format_time($seconds){
+		
+		$hours = floor($seconds / 3600);
+		$minutes = floor(($seconds % 3600) / 60);
+		$secs = $seconds % 60;
+		
+		if($hours > 0){
+			
+			return sprintf('%dh%02dm%02ds', $hours, $minutes, $secs);
+		}
+		
+		return sprintf('%dm%02ds', $minutes, $secs);
 	}
 	
 	private function randomchars(){
