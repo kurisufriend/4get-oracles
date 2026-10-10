@@ -49,7 +49,7 @@ class config{
 	
 	// Amount of requests allowed before we block
 	// Set to 0 to disable ratelimiting
-	const RATELIMIT_BURST = 2;
+	const RATELIMIT_BURST = 0;
 	
 	// IP source for ratelimiting. Choices: false for getting the IP directly,
 	// or "X-Header-Name" to get the IP from a forwarded header
