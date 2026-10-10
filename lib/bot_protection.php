@@ -9,73 +9,85 @@ class bot_protection{
 			// ratelimit requests per IP
 			if(config::RATELIMIT_IP_SOURCE === false){
 				
-				$source = "r" . $_SERVER["REMOTE_ADDR"];
+				$source = $_SERVER["REMOTE_ADDR"];
 			}else{
 				
-				$source = "r" . $_SERVER[explode(";", strtoupper(str_replace("-", "_", config::IP_SOURCE)))[0]];
+				$source = $_SERVER[explode(";", strtoupper(str_replace("-", "_", config::IP_SOURCE)))[0]];
 			}
 			
-			// counter
-			// resets on every req	
-			$counter = apcu_fetch($source);
-			$counter = (int)$counter + 1;
-			
+			// check if its not a local IP. Probably local tor bridge, dont ratelimit
 			if(
-				(
-					CONFIG::RATELIMIT_PUNISH !== 0 &&
-					$counter > config::RATELIMIT_BURST + 1
-				) &&
-				(
-					(
-						$output === false &&
-						CONFIG::RATELIMIT_PUNISH_API === true
-					) ||
-					$output === true
-				)
+				filter_var(
+					$source, 
+					FILTER_VALIDATE_IP, 
+					FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+				) !== false
 			){
 				
-				$block_time = config::RATELIMIT_TIME + (($counter - 1) * config::RATELIMIT_PUNISH);
-			}else{
+				$source = "r." . $source;
 				
-				$block_time = config::RATELIMIT_TIME;
-			}
-			
-			apcu_store($source, $counter, $block_time);
-			
-			if($counter > config::RATELIMIT_BURST){
+				// counter
+				// resets on every req	
+				$counter = apcu_fetch($source);
+				$counter = (int)$counter + 1;
 				
-				apcu_inc(intdiv(time(), 3600) . ".bot_requests", 1, $s, 262800);
-				
-				if($output === false){
+				if(
+					(
+						CONFIG::RATELIMIT_PUNISH !== 0 &&
+						$counter > config::RATELIMIT_BURST + 1
+					) &&
+					(
+						(
+							$output === false &&
+							CONFIG::RATELIMIT_PUNISH_API === true
+						) ||
+						$output === true
+					)
+				){
 					
-					http_response_code(429);
-					echo json_encode([
-						"status" => "You love 4get too much. Try again in " . $this->format_time($block_time) . "."
-					]);
-					die();
+					$block_time = config::RATELIMIT_TIME + (($counter - 1) * config::RATELIMIT_PUNISH);
+				}else{
+					
+					$block_time = config::RATELIMIT_TIME;
 				}
 				
-				$payload = [
-					"timetaken" => microtime(true),
-					"class" => "",
-					"right-left" => "",
-					"right-right" => "",
-					"left" =>
-						'<div class="infobox">' .
-							'<h1>You\'re damaging my calm</h1>' .
-							'You love 4get too much. Try again in <b>' . $this->format_time($block_time) . '</b>.' .
-						'</div>'
-				];
+				apcu_store($source, $counter, $block_time);
 				
-				$frontend->loadheader(
-					$get,
-					$filters,
-					$page,
-					false
-				);
-				
-				echo $frontend->load("search.html", $payload);
-				die();
+				if($counter > config::RATELIMIT_BURST){
+					
+					apcu_inc(intdiv(time(), 3600) . ".bot_requests", 1, $s, 262800);
+					
+					if($output === false){
+						
+						http_response_code(429);
+						echo json_encode([
+							"status" => "You love 4get too much. Try again in " . $this->format_time($block_time) . "."
+						]);
+						die();
+					}
+					
+					$payload = [
+						"timetaken" => microtime(true),
+						"class" => "",
+						"right-left" => "",
+						"right-right" => "",
+						"left" =>
+							'<div class="infobox">' .
+								'<h1>You\'re damaging my calm</h1>' .
+								'You love 4get too much. Try again in <b>' . $this->format_time($block_time) . '</b>.' .
+							'</div>'
+					];
+					
+					$frontend->loadheader(
+						$get,
+						$filters,
+						$page,
+						false
+					);
+					
+					echo $frontend->load("search.html", $payload);
+					die();
+				}
 			}
 		}
 				
