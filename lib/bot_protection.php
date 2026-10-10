@@ -44,6 +44,8 @@ class bot_protection{
 			
 			if($counter > config::RATELIMIT_BURST){
 				
+				apcu_inc(intdiv(time(), 3600) . ".bot_requests", 1, $s, 262800);
+				
 				if($output === false){
 					
 					http_response_code(429);
@@ -259,7 +261,7 @@ class bot_protection{
 			}
 		}
 		
-		apcu_inc(intdiv(time(), 3600) . ".bot_requests", 1, $s, 259200);
+		apcu_inc(intdiv(time(), 3600) . ".bot_requests", 1, $s, 262800);
 		$key = "c" . apcu_inc("captcha_gen", 1) . "." . $this->randomchars();
 		
 		$payload = [
