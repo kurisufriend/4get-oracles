@@ -12,14 +12,14 @@ class bot_protection{
 				$source = $_SERVER["REMOTE_ADDR"];
 			}else{
 				
-				$source = $_SERVER[explode(";", strtoupper(str_replace("-", "_", config::IP_SOURCE)))[0]];
+				$source = $_SERVER["HTTP_" . explode(";", strtoupper(str_replace("-", "_", config::RATELIMIT_IP_SOURCE)))[0]];
 			}
 			
 			// check if its not a local IP. Probably local tor bridge, dont ratelimit
 			if(
 				filter_var(
-					$source, 
-					FILTER_VALIDATE_IP, 
+					$source,
+					FILTER_VALIDATE_IP,
 					FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
 				) !== false
 			){
@@ -27,7 +27,7 @@ class bot_protection{
 				$source = "r." . $source;
 				
 				// counter
-				// resets on every req	
+				// resets on every req
 				$counter = apcu_fetch($source);
 				$counter = (int)$counter + 1;
 				
