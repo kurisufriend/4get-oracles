@@ -975,11 +975,23 @@ class brave{
 					}
 				}
 				
+				$thumb = isset($info["images"][0]["original"]) ? $info["images"][0]["original"] : null;
+				
+				if(
+					preg_match(
+						'/^\/\//',
+						$thumb
+					) !== 0
+				){
+					
+					$thumb = "https:" . $thumb;
+				}
+				
 				$out["answer"][] = [
 					"title" => $this->fuckhtml->getTextContent($info["title"]),
 					"description" => $description,
 					"url" => $info["url"],
-					"thumb" => isset($info["images"][0]["original"]) ? $info["images"][0]["original"] : null,
+					"thumb" => $thumb,
 					"table" => $table,
 					"sublink" => $sublink
 				];
@@ -995,6 +1007,25 @@ class brave{
 			
 			foreach($data["videos"]["results"] as $video){
 				
+				if(
+					isset($video["video"]["thumbnail"]["src"]) &&
+					$video["video"]["thumbnail"]["src"] != "d" &&
+					$video["video"]["thumbnail"]["src"] != "void 0"
+				){
+					
+					$thumb = $video["video"]["thumbnail"]["src"];
+				}elseif(
+					isset($video["thumbnail"]["src"]) &&
+					$video["thumbnail"]["src"] != "d" &&
+					$video["thumbnail"]["src"] != "void 0"
+				){
+					
+					$thumb = $video["thumbnail"]["src"];
+				}else{
+					
+					$thumb = null;
+				}
+				
 				$out["video"][] = [
 					"title" => $this->titledots($video["title"]),
 					"description" => $this->titledots($video["description"]),
@@ -1002,10 +1033,10 @@ class brave{
 					"duration" => isset($video["video"]["duration"]) && $video["video"]["duration"] != "void 0" ? $this->hms2int($video["video"]["duration"]) : null,
 					"views" => isset($video["video"]["views"]) && $video["video"]["views"] != "void 0" ? (int)$video["video"]["views"] : null,
 					"thumb" =>
-						isset($video["thumbnail"]["src"]) ?
+						$thumb !== null ?
 						[
 							"ratio" => "16:9",
-							"url" => $this->unshiturl($video["thumbnail"]["src"])
+							"url" => $this->unshiturl($thumb)
 						] :
 						[
 							"ratio" => null,
