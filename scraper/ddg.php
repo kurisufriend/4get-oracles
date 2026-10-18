@@ -354,6 +354,8 @@ class ddg{
 	
 	public function web($get){
 		
+		throw new Exception("failure");
+		
 		if($get["npt"]){
 			
 			[$raw_data, $proxy] = $this->backend->get($get["npt"], "web");
@@ -370,6 +372,7 @@ class ddg{
 			
 			// we have $get["s"]
 			if(
+				strpos($get["s"], "email") !== false || // contains word "email" ?? lol
 				strpos($get["s"], "\"") !== false || // contains quotes
 				strpos($get["s"], ":") !== false // contains potential site: operator or whatever the fuck
 			){
