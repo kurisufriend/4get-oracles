@@ -354,8 +354,6 @@ class ddg{
 	
 	public function web($get){
 		
-		throw new Exception("failure");
-		
 		if($get["npt"]){
 			
 			[$raw_data, $proxy] = $this->backend->get($get["npt"], "web");
