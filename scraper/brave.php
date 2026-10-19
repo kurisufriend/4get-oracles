@@ -994,24 +994,15 @@ class brave{
 				
 				foreach($data["videos"]["results"] as $video){
 					
-					if(
-						isset($video["video"]["thumbnail"]["src"]) &&
-						$video["video"]["thumbnail"]["src"] != "d" &&
-						$video["video"]["thumbnail"]["src"] != "void 0"
-					){
-						
-						$thumb = $video["video"]["thumbnail"]["src"];
-					}elseif(
-						isset($video["thumbnail"]["src"]) &&
-						$video["thumbnail"]["src"] != "d" &&
-						$video["thumbnail"]["src"] != "void 0"
-					){
-						
-						$thumb = $video["thumbnail"]["src"];
-					}else{
-						
-						$thumb = null;
-					}
+					// get thumbnails
+					$thumbs = [];
+					
+					if(isset($video["video"]["thumbnail"]["src"])){ $thumbs[] = $video["video"]["thumbnail"]["src"]; }
+					if(isset($video["video"]["thumbnail"]["original"])){ $thumbs[] = $video["video"]["thumbnail"]["original"]; }
+					if(isset($video["thumbnail"]["src"])){ $thumbs[] = $video["thumbnail"]["src"]; }
+					if(isset($video["thumbnail"]["original"])){ $thumbs[] = $video["thumbnail"]["original"]; }
+					
+					$thumb = $this->check_thumbs($thumbs);
 					
 					$out["video"][] = [
 						"title" => $this->titledots($video["title"]),
@@ -1020,7 +1011,7 @@ class brave{
 						"duration" => isset($video["video"]["duration"]) && $video["video"]["duration"] != "void 0" ? $this->hms2int($video["video"]["duration"]) : null,
 						"views" => isset($video["video"]["views"]) && $video["video"]["views"] != "void 0" ? (int)$video["video"]["views"] : null,
 						"thumb" =>
-							$thumb !== null ?
+							$thumb !== false ?
 							[
 								"ratio" => "16:9",
 								"url" => $this->unshiturl($thumb)
@@ -1891,6 +1882,24 @@ class brave{
 					)[0]
 				)
 			);
+	}
+	
+	private function check_thumbs($thumbs){
+		
+		foreach($thumbs as $thumb){
+			
+			if(
+				preg_match(
+					'/^http/',
+					$thumb
+				) === 1
+			){
+				
+				return $this->unshiturl($thumb);
+			}
+		}
+		
+		return false;
 	}
 	
 	private function detect_captcha(){
