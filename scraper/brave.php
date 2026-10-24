@@ -460,7 +460,7 @@ class brave{
 				){
 					
 					$thumb = [
-						"ratio" => $result["thumbnail"]["logo"] == "false" ? "16:9" : "1:1",
+						"ratio" => (isset($result["thumbnail"]["logo"]) && $result["thumbnail"]["logo"] == "true") ? "1:1" : "16:9",
 						"url" => $result["thumbnail"]["original"]
 					];
 				}else{
@@ -994,6 +994,15 @@ class brave{
 				
 				foreach($data["videos"]["results"] as $video){
 					
+					if(
+						$video["title"] == "" &&
+						$video["description"] == ""
+					){
+						
+						// ignore result
+						continue;
+					}
+					
 					// get thumbnails
 					$thumbs = [];
 					
@@ -1111,141 +1120,6 @@ class brave{
 		return $out;
 	}
 	
-	public function news($get){
-		
-		if($get["npt"]){
-			
-			[$req, $proxy] = $this->backend->get($get["npt"], "news");
-			
-			$req = json_decode($req, true);
-			
-			$search = $req["q"];
-			$country = $req["country"];
-			$nsfw = $req["nsfw"];
-			$offset = $req["offset"];
-			$spellcheck = $req["spellcheck"];
-			
-			try{
-				$html =
-					$this->get(
-						$proxy,
-						"https://search.brave.com/news",
-						[
-							"q" => $search,
-							"offset" => $offset,
-							"spellcheck" => $spellcheck
-						],
-						$nsfw,
-						$country
-					);
-				
-			}catch(Exception $error){
-				
-				throw new Exception("Could not fetch search page");
-			}
-			
-		}else{
-			$search = $get["s"];
-			if(strlen($search) === 0){
-				
-				throw new Exception("Search term is empty!");
-			}
-			
-			if(strlen($search) > 2048){
-				
-				throw new Exception("Search term is too long!");
-			}
-			
-			$proxy = $this->backend->get_ip();
-			$nsfw = $get["nsfw"];
-			$country = $get["country"];
-			$spellcheck = $get["spellcheck"] == "yes" ? "1" : "0";
-			
-			/*
-			$handle = fopen("scraper/brave-news.html", "r");
-			$html = fread($handle, filesize("scraper/brave-news.html"));
-			fclose($handle);*/
-			try{
-				$html =
-					$this->get(
-						$proxy,
-						"https://search.brave.com/news",
-						[
-							"q" => $search,
-							"spellcheck" => $spellcheck
-						],
-						$nsfw,
-						$country
-					);
-				
-			}catch(Exception $error){
-				
-				throw new Exception("Could not fetch search page");
-			}
-		}
-		
-		$out = [
-			"status" => "ok",
-			"npt" => null,
-			"news" => []
-		];
-		
-		// load html
-		$this->fuckhtml->load($html);
-		
-		$this->detect_captcha($html);
-		
-		// get npt
-		$out["npt"] =
-			$this->generatenextpagetoken(
-				$search,
-				$nsfw,
-				$country,
-				$spellcheck,
-				"news",
-				$proxy
-			);
-		
-		$this->fuckhtml->load($html);
-		$jsons = $this->get_js();
-		
-		foreach($jsons as $json){
-			foreach(
-				$json["data"]["response"]["news"]["results"]
-				as $news
-			){
-				
-				if(
-					!isset($news["thumbnail"]["src"]) ||
-					$news["thumbnail"]["src"] == "void 0"
-				){
-									
-					$thumb = [
-						"url" => null,
-						"ratio" => null
-					];
-				}else{
-									
-					$thumb = [
-						"url" => $this->unshiturl($news["thumbnail"]["src"]),
-						"ratio" => "16:9"
-					];
-				}
-				
-				$out["news"][] = [
-					"title" => $news["title"],
-					"author" => null,
-					"description" => $news["description"],
-					"date" => !isset($news["age"]) || $news["age"] == "void 0" || $news["age"] == "null" ? null : strtotime($news["age"]),
-					"thumb" => $thumb,
-					"url" => $news["url"]
-				];
-			}
-		}
-		
-		return $out;
-	}
-	
 	public function image($get){
 		
 		$search = $get["s"];
@@ -1298,6 +1172,12 @@ class brave{
 		$jsons = $this->get_js();
 		
 		foreach($jsons as $json){
+			
+			if(!isset($json["data"]["body"]["response"]["results"])){
+				
+				continue;
+			}
+			
 			foreach(
 				$json
 				["data"]
@@ -1325,7 +1205,7 @@ class brave{
 				];
 			}
 		}
-			
+		
 		return $out;
 	}
 	
@@ -1431,8 +1311,15 @@ class brave{
 		
 		$this->fuckhtml->load($html);
 		$jsons = $this->get_js();
+		$error = false;
 		
 		foreach($jsons as $json){
+			
+			if(!isset($json["data"]["body"]["response"]["results"])){
+				
+				continue;
+			}
+			
 			foreach(
 				$json
 				["data"]
@@ -1485,6 +1372,147 @@ class brave{
 			}
 		}
 
+		return $out;
+	}
+	
+	public function news($get){
+		
+		if($get["npt"]){
+			
+			[$req, $proxy] = $this->backend->get($get["npt"], "news");
+			
+			$req = json_decode($req, true);
+			
+			$search = $req["q"];
+			$country = $req["country"];
+			$nsfw = $req["nsfw"];
+			$offset = $req["offset"];
+			$spellcheck = $req["spellcheck"];
+			
+			try{
+				$html =
+					$this->get(
+						$proxy,
+						"https://search.brave.com/news",
+						[
+							"q" => $search,
+							"offset" => $offset,
+							"spellcheck" => $spellcheck
+						],
+						$nsfw,
+						$country
+					);
+				
+			}catch(Exception $error){
+				
+				throw new Exception("Could not fetch search page");
+			}
+			
+		}else{
+			$search = $get["s"];
+			if(strlen($search) === 0){
+				
+				throw new Exception("Search term is empty!");
+			}
+			
+			if(strlen($search) > 2048){
+				
+				throw new Exception("Search term is too long!");
+			}
+			
+			$proxy = $this->backend->get_ip();
+			$nsfw = $get["nsfw"];
+			$country = $get["country"];
+			$spellcheck = $get["spellcheck"] == "yes" ? "1" : "0";
+			
+			/*
+			$handle = fopen("scraper/brave-news.html", "r");
+			$html = fread($handle, filesize("scraper/brave-news.html"));
+			fclose($handle);*/
+			try{
+				$html =
+					$this->get(
+						$proxy,
+						"https://search.brave.com/news",
+						[
+							"q" => $search,
+							"spellcheck" => $spellcheck
+						],
+						$nsfw,
+						$country
+					);
+				
+			}catch(Exception $error){
+				
+				throw new Exception("Could not fetch search page");
+			}
+		}
+		
+		$out = [
+			"status" => "ok",
+			"npt" => null,
+			"news" => []
+		];
+		
+		// load html
+		$this->fuckhtml->load($html);
+		
+		$this->detect_captcha($html);
+		
+		// get npt
+		$out["npt"] =
+			$this->generatenextpagetoken(
+				$search,
+				$nsfw,
+				$country,
+				$spellcheck,
+				"news",
+				$proxy
+			);
+		
+		$this->fuckhtml->load($html);
+		$jsons = $this->get_js();
+		
+		foreach($jsons as $json){
+						
+			if(!isset($json["data"]["response"]["news"]["results"])){
+				
+				continue;
+			}
+			
+			foreach(
+				$json["data"]["response"]["news"]["results"]
+				as $news
+			){
+				
+				if(
+					!isset($news["thumbnail"]["src"]) ||
+					$news["thumbnail"]["src"] == "void 0"
+				){
+									
+					$thumb = [
+						"url" => null,
+						"ratio" => null
+					];
+				}else{
+									
+					$thumb = [
+						"url" => $this->unshiturl($news["thumbnail"]["src"]),
+						"ratio" => "16:9"
+					];
+				}
+				
+				$out["news"][] = [
+					"title" => $news["title"],
+					"author" => null,
+					"description" => $news["description"],
+					"date" => !isset($news["age"]) || $news["age"] == "void 0" || $news["age"] == "null" ? null : strtotime($news["age"]),
+					"thumb" => $thumb,
+					"url" => $news["url"]
+				];
+			}
+		}
+		
 		return $out;
 	}
 	

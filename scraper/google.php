@@ -817,7 +817,7 @@ class google{
 			// country
 			if($get["country"] != "any"){
 				
-				$params["gl"] = $country;
+				$params["gl"] = $get["country"];
 			}
 			
 			// nsfw
