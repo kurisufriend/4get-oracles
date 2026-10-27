@@ -1,3 +1,8 @@
+> **4get-oracles fork:** Restores the calculator, encoder/hasher, numeric base
+> conversion, and time oracles. Upstream changes are merged daily with checks.
+> Development assisted by OpenAI Codex (GPT-6).
+> See [fork maintenance](docs/fork.md) for the sync workflow and local commands.
+
 ## <a href="https://4get.ca/donate">Donate to the project here!</a>
 
 # 4get search
