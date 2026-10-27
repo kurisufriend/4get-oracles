@@ -2,11 +2,12 @@ name: Sync upstream
 
 on:
   schedule:
-    - cron: '23 6 * * *'
+    - cron: '2-57/5 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
+  packages: write
 
 concurrency:
   group: sync-upstream
@@ -16,6 +17,8 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.merge.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,6 +29,23 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
       - name: Merge upstream and validate oracles
-        run: bash scripts/sync-upstream.sh
+        id: merge
+        run: |
+          before=$(git rev-parse HEAD)
+          bash scripts/sync-upstream.sh
+          if [[ "$(git rev-parse HEAD)" != "$before" ]]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish validated merge
+        if: steps.merge.outputs.changed == 'true'
         run: git push origin HEAD:master
+
+  publish:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    uses: ./.github/workflows/publish-container.yml
+    permissions:
+      contents: read
+      packages: write

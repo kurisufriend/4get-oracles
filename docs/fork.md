@@ -7,12 +7,15 @@ reverse of that commit, including its `web.php` integration.
 
 ## Upstream updates
 
-The **Sync upstream** GitHub Actions workflow runs daily at 06:23 UTC and can
-also be run manually. It merges `master` from
+The **Sync upstream** GitHub Actions workflow checks every five minutes (at
+minutes 02, 07, 12, and so on) and can also be run manually. GitHub may delay
+scheduled runs; this is not a guaranteed five-minute delivery time. It merges `master` from
 https://git.lolcat.ca/lolcat/4get.git into this repository's `master`, runs PHP
 syntax and oracle smoke checks, and pushes only if all steps succeed. No custom
 secrets are needed; the workflow uses the repository's `GITHUB_TOKEN` with
-`contents: write`. Repository policies must permit Actions to push to `master`.
+`contents: write`. It also grants `packages: write` to the reusable container
+publishing job. Repository policies must permit Actions to push to `master`.
+Unchanged polls do not push or build a container.
 
 The oracle restoration is retained as a fork change by Git's three-way merge;
 it does not need to be reapplied after every upstream update. Fork commits and
@@ -46,7 +49,9 @@ GitHub references: [scheduled workflows](https://docs.github.com/en/actions/refe
 
 The **Publish container** workflow builds and tests the Docker image, then pushes
 `ghcr.io/kurisufriend/4get-oracles:latest` and `sha-<full-commit-SHA>` tags.
-It runs on pushes to `master`, after successful upstream syncs, and manually.
+It runs on pushes to `master`, after successful upstream syncs that changed
+the branch, and manually. Sync calls the reusable publishing workflow directly
+because a push made with `GITHUB_TOKEN` does not trigger a push workflow.
 The image currently targets `linux/amd64`, matching the curl-impersonate base.
 
 ```sh

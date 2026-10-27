@@ -1,5 +1,5 @@
 > **4get-oracles fork:** Restores the calculator, encoder/hasher, numeric base
-> conversion, and time oracles. Upstream changes are merged daily with checks.
+> conversion, and time oracles. Upstream is checked every five minutes and changes are merged with checks.
 > Development assisted by OpenAI Codex (GPT-6).
 > See [fork maintenance](docs/fork.md) for the sync workflow and local commands.
 
