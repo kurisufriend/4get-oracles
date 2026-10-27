@@ -22,11 +22,31 @@ class calculator extends oracle {
 	//  gay.
 	public function generate_response($q)
 	{
+		// Bound parsing work before allocating tokens or recursing into groups.
+		if (strlen($q) > 1024) {
+			return "";
+		}
 		$nums = str_split("1234567890.");
 		$ops = str_split("+-/*^%;");
 		$grouping = str_split("()");
 
 		$q = str_replace(" ", "", $q);
+		if ($q === "") {
+			return "";
+		}
+		$depth = 0;
+		foreach (str_split($q) as $char) {
+			if ($char === "(") {
+				if (++$depth > 32) {
+					return "";
+				}
+			} elseif ($char === ")" && --$depth < 0) {
+				return "";
+			}
+		}
+		if ($depth !== 0) {
+			return "";
+		}
 
 		// backstop for the parser so it catches the last
 		//  numeric token
@@ -112,10 +132,13 @@ class calculator extends oracle {
 		}
 	}
 	public function executeBlock($tokens) {
+		if (count($tokens) === 0) {
+			throw new InvalidArgumentException("Empty expression");
+		}
 		if (count($tokens) >= 2 && $tokens[0][0] == "o" && $tokens[0][1] == "-" && $tokens[1][0] == "n") {
 			array_splice($tokens, 0, 2, [["n", -1 * (float)$tokens[1][1]]]);
 		}
-		if (count($tokens) > 0 && $tokens[0][0] == "o" || $tokens[count($tokens)-1][0] == "o") {
+		if ($tokens[0][0] == "o" || $tokens[count($tokens)-1][0] == "o") {
 			throw new Exception("Error Processing Request", 1);
 		}
 		while (in_array(["g", "("], $tokens)) {
@@ -135,6 +158,9 @@ class calculator extends oracle {
 					);
 					break;
 				}
+			}
+			if ($enclosedality !== 0) {
+				throw new InvalidArgumentException("Unmatched opening parenthesis");
 			}
 		}
 		$operators_in_pemdas_order = [
@@ -158,6 +184,9 @@ class calculator extends oracle {
 					}
 				}
 			}
+		}
+		if (count($tokens) !== 1 || $tokens[0][0] !== "n") {
+			throw new InvalidArgumentException("Invalid expression");
 		}
 		return $tokens;
 	}
