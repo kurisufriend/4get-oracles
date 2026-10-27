@@ -349,8 +349,8 @@ if(count($results["answer"]) !== 0){
 				
 				$right["answer"] .=
 					'<tr>' . 
-						'<td>' . $info . '</td>' .
-						'<td>' . $value . '</td>' .
+						'<td>' . htmlspecialchars($info) . '</td>' .
+						'<td>' . htmlspecialchars($value) . '</td>' .
 					'</tr>';
 			}
 			
