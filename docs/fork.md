@@ -41,3 +41,19 @@ pushes and pull requests, and explicitly before publishing scheduled merges
 because pushes made with `GITHUB_TOKEN` do not trigger another push workflow.
 
 GitHub references: [scheduled workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule) and [token-triggered events](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
+
+## Container image
+
+The **Publish container** workflow builds and tests the Docker image, then pushes
+`ghcr.io/kurisufriend/4get-oracles:latest` and `sha-<full-commit-SHA>` tags.
+It runs on pushes to `master`, after successful upstream syncs, and manually.
+The image currently targets `linux/amd64`, matching the curl-impersonate base.
+
+```sh
+docker pull ghcr.io/kurisufriend/4get-oracles:latest
+docker compose up -d
+```
+
+Publishing uses the repository's `GITHUB_TOKEN` with `packages: write`. GHCR
+packages initially default to private; enable public visibility in the package
+settings if anonymous pulls are needed.
