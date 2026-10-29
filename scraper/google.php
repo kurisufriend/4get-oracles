@@ -706,20 +706,29 @@ class google{
 			
 			if(count($a) === 0){
 				
-				throw new Exception("Failed to find link");
+				// failed to find link, will serve a resolver target as fallback
+				$fallback = true;
+				$slug = explode("url=", $this->handles[$i]["replacement"]);
+				$link = "/resolver?scraper=google&target=" . rawurlencode($slug[1]);
+			}else{
+				
+				$fallback = false;
+				$link =
+					$this->fuckhtml
+					->getTextContent(
+						$a[0]["attributes"]["href"]
+					);
 			}
 			
-			$link =
-				$this->fuckhtml
-				->getTextContent(
-					$a[0]["attributes"]["href"]
-				);
-			
 			if(
-				preg_match(
-					'/^(https?:|)\/\//',
-					$link
-				)
+				(
+					$fallback === false &&
+					preg_match(
+						'/^(https?:|)\/\//',
+						$link
+					)
+				) ||
+				$fallback === true
 			){
 				
 				$keys[] = $this->handles[$i]["replacement"];
