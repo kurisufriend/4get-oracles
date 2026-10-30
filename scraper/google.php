@@ -658,7 +658,7 @@ class google{
 		curl_setopt($curlproc, CURLOPT_CONNECTTIMEOUT, 30);
 		curl_setopt($curlproc, CURLOPT_TIMEOUT, 30);
 		
-		//$this->backend->assign_proxy($curlproc, $proxy);
+		$this->backend->assign_proxy($curlproc, $this->backend->get_ip(null, true));
 		
 		curl_multi_add_handle($this->proc, $curlproc);
 		$this->handles[] = [

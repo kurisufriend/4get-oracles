@@ -168,6 +168,7 @@ class config{
 	const PROXY_YAHOO_JAPAN = false;
 	const PROXY_BRAVE = false;
 	const PROXY_GOOGLE = false;
+	const PROXY_GOOGLE_ALT = false; // alt proxies for url resolution
 	const PROXY_GOOGLE_API = false;
 	const PROXY_GOOGLE_CSE = false;
 	const PROXY_STARTPAGE = false;
