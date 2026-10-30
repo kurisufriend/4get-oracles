@@ -12,9 +12,9 @@ class backend{
 	/*
 		Proxy stuff
 	*/
-	public function get_ip($proxy_index_raw = null){
+	public function get_ip($proxy_index_raw = null, $use_alt_list = false){
 		
-		$pool = constant("config::PROXY_" . strtoupper($this->scraper));
+		$pool = constant("config::PROXY_" . strtoupper($this->scraper) . ($use_alt_list ? "_ALT" : ""));
 		if($pool === false){
 			
 			// we don't want a proxy, fuck off!

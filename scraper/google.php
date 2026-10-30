@@ -658,7 +658,7 @@ class google{
 		curl_setopt($curlproc, CURLOPT_CONNECTTIMEOUT, 30);
 		curl_setopt($curlproc, CURLOPT_TIMEOUT, 30);
 		
-		//$this->backend->assign_proxy($curlproc, $proxy);
+		$this->backend->assign_proxy($curlproc, $this->backend->get_ip(null, true));
 		
 		curl_multi_add_handle($this->proc, $curlproc);
 		$this->handles[] = [
@@ -835,15 +835,15 @@ class google{
 			// language
 			if($get["lang"] != "any"){
 				
-				$params["lr"] = "lang_" . $lang;
+				$params["lr"] = "lang_" . $get["lang"];
 			}
 			
 			// generate tbs
 			$tbs = [];
 			
 			// get date
-			$get["older"] = $get["older"] === false ? null : date("m/d/Y", $older);
-			$get["newer"] = $get["newer"] === false ? null : date("m/d/Y", $newer);
+			$get["older"] = $get["older"] === false ? null : date("m/d/Y", $get["older"]);
+			$get["newer"] = $get["newer"] === false ? null : date("m/d/Y", $get["newer"]);
 			
 			if(
 				$get["older"] !== null ||
@@ -1487,15 +1487,15 @@ class google{
 		// generate parameters
 		if($get["npt"]){
 			
-			[$params, $proxy] =
+			[$params_json, $proxy] =
 				$this->backend->get(
 					$get["npt"],
 					"images"
 				);
 			
-			$params = json_decode($params, true);
-			$container = $params["c"];
-			unset($params["c"]);
+			$params_json = json_decode($params_json, true);
+			$container = &$params_json["c"];
+			$params = &$params_json["p"];
 		}else{
 			
 			$search = $get["s"];
@@ -1514,6 +1514,7 @@ class google{
 			$type = $get["type"];
 			$format = $get["format"];
 			$rights = $get["rights"];
+			$container = null;
 			
 			$params = [
 				"q" => $search,
@@ -1607,7 +1608,8 @@ class google{
 		$data = $this->get(
 			$proxy,
 			"https://www.google.com/search",
-			$params
+			$params,
+			$container
 		);
 		
 		$html = &$data["data"];
@@ -1710,7 +1712,10 @@ class google{
 			$out["npt"] =
 				$this->backend
 				->store(
-					json_encode($params),
+					json_encode([
+						"p" => $params,
+						"c" => $container
+					]),
 					"image",
 					$proxy
 				);
