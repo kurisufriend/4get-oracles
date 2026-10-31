@@ -10,8 +10,9 @@ class google{
 		include "lib/backend.php";
 		$this->backend = new backend("google");
 		
-		$this->proc = curl_multi_init();
-		$this->handles = [];
+		$this->urls_to_resolve = [];
+		
+		$this->init_multi_curl();
 	}
 	
 	public function getfilters($page){
@@ -617,23 +618,57 @@ class google{
 		];
 	}
 	
-	private function redirect_add_url($url){
+	private function init_multi_curl(){
+		
+		$this->proc = curl_multi_init();
+		$this->handles = [];
+	}
+	
+	private function redirect_add_url($url, $replace = null){
 		
 		if(
 			preg_match(
 				'/^\/goto\?url=([^&]+)/',
 				$url,
 				$slug
-			) === 0
+			) === 1
 		){
 			
-			// not a google redirect
-			return $url;
+			// normal goto
+			$this->urls_to_resolve[] = [
+				"replace" => $url,
+				"slug" => $slug[1],
+				"type" => "goto"
+			];
 		}
+		
+		elseif(
+			preg_match(
+				'/https?:\/\/share\.google\/([^"]+)+/',
+				$url,
+				$link_regex
+			) === 1
+		){
+			
+			// share.google
+			$this->urls_to_resolve[] = [
+				"replace" => $replace,
+				"slug" => $link_regex[1],
+				"type" => "share"
+			];
+		}
+		
+		// rest is ignored, since its not a redirect
+		
+		// always return url
+		return $url;
+	}
+	
+	private function urlfuck_goto($url, $slug){
 		
 		$curlproc = curl_init();
 		
-		curl_setopt($curlproc, CURLOPT_URL, "https://www.google.com/goto?url=" . urlencode($slug[1]));
+		curl_setopt($curlproc, CURLOPT_URL, "https://www.google.com/goto?url=" . rawurlencode($slug));
 		
 		curl_setopt($curlproc, CURLOPT_ENCODING, ""); // default encoding
 		curl_setopt($curlproc, CURLOPT_HTTPHEADER,
@@ -658,7 +693,7 @@ class google{
 		curl_setopt($curlproc, CURLOPT_CONNECTTIMEOUT, 30);
 		curl_setopt($curlproc, CURLOPT_TIMEOUT, 30);
 		
-		$this->backend->assign_proxy($curlproc, $this->backend->get_ip(null, true));
+		//$this->backend->assign_proxy($curlproc, $this->backend->get_ip(null, true));
 		
 		curl_multi_add_handle($this->proc, $curlproc);
 		$this->handles[] = [
@@ -669,7 +704,92 @@ class google{
 		return $url;
 	}
 	
-	private function resolve_urls(&$scraped_data){
+	private function urlfuck_shareservice($url, $slug){
+		
+		$curlproc = curl_init();
+		
+		curl_setopt($curlproc, CURLOPT_URL, "https://www.google.com/httpservice/retry/SearchApiService/GetShortenedKpSharingUrl?udm=14&reqpld=[[[\"/goto?url%3D" . rawurlencode($slug) . "\"],1,null,null,null,null,35,[\"st\"]]]&msc=gwsrpc");
+		
+		curl_setopt($curlproc, CURLOPT_ENCODING, ""); // default encoding
+		curl_setopt($curlproc, CURLOPT_HTTPHEADER,
+			["User-Agent: " . config::USER_AGENT,
+			"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			"Accept-Language: en-US,en;q=0.5",
+			"Accept-Encoding: gzip, deflate, br, zstd",
+			"DNT: 1",
+			"Sec-GPC: 1",
+			"Connection: keep-alive",
+			"Upgrade-Insecure-Requests: 1",
+			"Sec-Fetch-Dest: document",
+			"Sec-Fetch-Mode: navigate",
+			"Sec-Fetch-Site: none",
+			"Sec-Fetch-User: ?1",
+			"Priority: u=0, i"]
+		);
+		
+		curl_setopt($curlproc, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($curlproc, CURLOPT_SSL_VERIFYHOST, 2);
+		curl_setopt($curlproc, CURLOPT_SSL_VERIFYPEER, true);
+		curl_setopt($curlproc, CURLOPT_CONNECTTIMEOUT, 30);
+		curl_setopt($curlproc, CURLOPT_TIMEOUT, 30);
+		
+		//$this->backend->assign_proxy($curlproc, $this->backend->get_ip(null, true));
+		
+		curl_multi_add_handle($this->proc, $curlproc);
+		$this->handles[] = [
+			"replacement" => $url,
+			"handle" => $curlproc
+		];
+		
+		return $url;
+	}
+	
+	private function urlfuck_share($url, $slug){
+		
+		$curlproc = curl_init();
+		
+		curl_setopt($curlproc, CURLOPT_URL, "https://www.google.com/share.google?q=" . rawurlencode($slug));
+		
+		curl_setopt($curlproc, CURLOPT_ENCODING, ""); // default encoding
+		curl_setopt($curlproc, CURLOPT_HTTPHEADER,
+			["User-Agent: " . config::USER_AGENT,
+			"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			"Accept-Language: en-US,en;q=0.5",
+			"Accept-Encoding: gzip, deflate, br, zstd",
+			"DNT: 1",
+			"Sec-GPC: 1",
+			"Connection: keep-alive",
+			"Upgrade-Insecure-Requests: 1",
+			"Sec-Fetch-Dest: document",
+			"Sec-Fetch-Mode: navigate",
+			"Sec-Fetch-Site: none",
+			"Sec-Fetch-User: ?1",
+			"Priority: u=0, i"]
+		);
+		
+		curl_setopt($curlproc, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($curlproc, CURLOPT_SSL_VERIFYHOST, 2);
+		curl_setopt($curlproc, CURLOPT_SSL_VERIFYPEER, true);
+		curl_setopt($curlproc, CURLOPT_CONNECTTIMEOUT, 30);
+		curl_setopt($curlproc, CURLOPT_TIMEOUT, 30);
+		
+		//$this->backend->assign_proxy($curlproc, $this->backend->get_ip(null, true));
+		
+		curl_multi_add_handle($this->proc, $curlproc);
+		$this->handles[] = [
+			"replacement" => $url,
+			"handle" => $curlproc
+		];
+		
+		return $url;
+	}
+	
+	private function resolve_gotos(&$scraped_data){
+		
+		foreach($this->urls_to_resolve as $item){
+			
+			$this->urlfuck_goto($item["replace"], $item["slug"]);
+		}
 		
 		do{
 			do{
@@ -697,6 +817,140 @@ class google{
 					$this->handles[$i]["handle"]
 				)
 			);
+			
+			$a =
+				$this->fuckhtml
+				->getElementsByTagName(
+					"a"
+				);
+			
+			if(count($a) === 0){
+				
+				// failed to find link, will serve a resolver target as fallback
+				$fallback = true;
+				$slug = explode("url=", $this->handles[$i]["replacement"]);
+				$link = "/resolver?scraper=google&target=" . rawurlencode($slug[1]);
+			}else{
+				
+				$fallback = false;
+				$link =
+					$this->fuckhtml
+					->getTextContent(
+						$a[0]["attributes"]["href"]
+					);
+			}
+			
+			if(
+				(
+					$fallback === false &&
+					preg_match(
+						'/^(https?:|)\/\//',
+						$link
+					)
+				) ||
+				$fallback === true
+			){
+				
+				$keys[] = $this->handles[$i]["replacement"];
+				$replacements[] = $link;
+			}
+		}
+		
+		$this->recursive_replace($keys, $replacements, $scraped_data);
+		
+		curl_multi_close($this->proc);
+	}
+	
+	private function resolve_share(&$scraped_data){
+		
+		foreach($this->urls_to_resolve as $item){
+			
+			$this->urlfuck_shareservice($item["replace"], $item["slug"]);
+		}
+		
+		do{
+			do{
+				$status = curl_multi_exec($this->proc, $active);
+			}while($status === CURLM_CALL_MULTI_PERFORM);
+
+			if($active){
+				curl_multi_select($this->proc);
+			}
+
+		}while($active && $status === CURLM_OK);
+		
+		//
+		// if we reach this, we're done downloading garbage
+		//
+		
+		// get the share links
+		$this->urls_to_resolve = [];
+		
+		for($i=0; $i<count($this->handles); $i++){
+			
+			$html = curl_multi_getcontent($this->handles[$i]["handle"]);
+			
+			if(
+				preg_match(
+					'/https?:\/\/share\.google\/(?:[^"]+)/',
+					$html,
+					$link_regex
+				) !== 1
+			){
+				
+				// failed to find link, will serve a resolver target as fallback
+				$fallback = true;
+				$slug = explode("url=", $this->handles[$i]["replacement"]);
+				$link = "/resolver?scraper=google&target=" . rawurlencode($slug[1]);
+			}else{
+				
+				$fallback = false;
+				$link = $link_regex[0];
+			}
+			
+			if(
+				(
+					$fallback === false &&
+					preg_match(
+						'/^(https?:|)\/\//',
+						$link
+					)
+				) ||
+				$fallback === true
+			){
+				
+				$this->redirect_add_url($link, $this->handles[$i]["replacement"]);
+			}
+		}
+		
+		// resolve shareable urls
+		$this->init_multi_curl();
+		
+		foreach($this->urls_to_resolve as $item){
+			
+			$this->urlfuck_share($item["replace"], $item["slug"]);
+		}
+		
+		do{
+			do{
+				$status = curl_multi_exec($this->proc, $active);
+			}while($status === CURLM_CALL_MULTI_PERFORM);
+
+			if($active){
+				curl_multi_select($this->proc);
+			}
+
+		}while($active && $status === CURLM_OK);
+		
+		// parse downloaded garbage
+		$keys = [];
+		$replacements = [];
+		
+		for($i=0; $i<count($this->handles); $i++){
+			
+			$html = curl_multi_getcontent($this->handles[$i]["handle"]);
+			
+			$this->fuckhtml->load($html);
 			
 			$a =
 				$this->fuckhtml
@@ -794,22 +1048,6 @@ class google{
 				
 				throw new Exception("Search term is empty!");
 			}
-			/*
-			$session = $this->backend->session_get();
-			
-			if(config::FPLAY_ENABLE_API === false){
-				
-				throw new Exception("This scraper requires the 4play session generator. Check the documentation for more information");
-			}
-			
-			if($session === false){
-				
-				throw new Exception("Session database is empty");
-			}
-			
-			$proxy = &$session["proxy"];
-			$headers = &$session["headers"];
-			*/
 			
 			$proxy = $this->backend->get_ip();
 			
@@ -1475,7 +1713,7 @@ class google{
 			];
 		}
 		
-		$this->resolve_urls($out);
+		$this->resolve_share($out);
 		
 		return $out;
 	}
@@ -1603,8 +1841,6 @@ class google{
 			}
 		}
 		
-		//$html = file_get_contents("scraper/google.html");
-				
 		$data = $this->get(
 			$proxy,
 			"https://www.google.com/search",
@@ -1614,6 +1850,8 @@ class google{
 		
 		$html = &$data["data"];
 		$container = &$data["container"];
+		
+		//$html = file_get_contents("scraper/google.html");
 		
 		$this->fuckhtml->load($html);
 		
@@ -1721,7 +1959,7 @@ class google{
 				);
 		}
 		
-		$this->resolve_urls($out);
+		$this->resolve_gotos($out);
 		
 		return $out;
 	}
@@ -2129,7 +2367,7 @@ class google{
 			];
 		}
 		
-		$this->resolve_urls($out);
+		$this->resolve_share($out);
 		
 		return $out;
 	}
@@ -2488,14 +2726,14 @@ class google{
 				"date" => $date,
 				"thumb" => $thumb,
 				"url" =>
-					$this->unshiturl(
+					$this->redirect_add_url(
 						$a["attributes"]
 						["href"]
 					)
 			];
 		}
 		
-		$this->resolve_urls($out);
+		$this->resolve_share($out);
 		
 		return $out;
 	}
