@@ -2726,7 +2726,7 @@ class google{
 				"date" => $date,
 				"thumb" => $thumb,
 				"url" =>
-					$this->unshiturl(
+					$this->redirect_add_url(
 						$a["attributes"]
 						["href"]
 					)
