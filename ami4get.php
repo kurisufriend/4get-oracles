@@ -31,7 +31,7 @@ echo json_encode(
 			"real_requests" => $real_requests,
 			"bot_requests" => $bot_requests,
 			"api_enabled" => config::API_ENABLED,
-			"alt_addresses" => config::ALT_ADDRESSES,
+			"alt_addresses" => config::ADDRESSES,
 			"version" => config::VERSION
 		],
 		"instances" => config::INSTANCES
