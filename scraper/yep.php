@@ -205,13 +205,6 @@ class yep{
 					"zh-tw" => "Chinese (Traditional)",
 					"zu" => "Zulu"
 				]
-			],
-			"nsfw" => [
-				"display" => "NSFW",
-				"option" => [
-					"yes" => "Yes",
-					"no" => "No"
-				]
 			]
 		];
 	}
@@ -317,20 +310,23 @@ class yep{
 		
 		// parse filters
 		$filters = [
-			"limit" => 100, // wwwwwwwwwwwwwww
-			"query" => $search,
+			"q" => $search,
+			"limit" => 10 // no fun allowed
 		];
 		
-		if($get["nsfw"] == "no"){ $filters["safeSearch"] = "moderate"; }
-		if($get["lang"] != "any"){ $filters["hl"] = $get["lang"]; }
+		if($get["lang"] != "any"){
+			
+			$filters["language"] = $get["lang"];
+			$filters["lang"] = $get["lang"];
+		}
 		
 		try{
 			
-			// https://api.yep.com/search?limit=20&query=asmr
+			// https://yep.com/web/v1/search?q=asmr&limit=10
 			$json =
 				$this->get(
 					$this->backend->get_ip(),
-					"https://api.yep.com/search",
+					"https://yep.com/web/v1/search",
 					$filters
 				);
 			
@@ -343,71 +339,37 @@ class yep{
 		
 		$json = json_decode($json, true);
 		//$json = json_decode(file_get_contents("scraper/yep.json"), true);
-		
 		if($json === null){
 			
 			throw new Exception("Failed to decode JSON");
 		}
 		
-		if(isset($json[1]["correction"])){
+		if(isset($json["code"])){
 			
-			$out["spelling"] = [
-				"type" => "not_many",
-				"using" => $search,
-				"correction" => $json[1]["correction"][1]
-			];
+			if(isset($json["reason"])){
+				
+				throw new Exception("Yep returned an API error: [{$json["code"]}] {$json["reason"]}");
+			}
+			
+			throw new Exception("Yep returned an unknown error");
 		}
 		
-		if(isset($json[1]["results"])){
-			foreach($json[1]["results"] as $item){
+		if(isset($json["results"])){
+			foreach($json["results"] as $item){
 				
-				switch(strtolower($item["type"])){
-					
-					case "organic":
-						$sublinks = [];
-						
-						if(isset($item["sitelinks"]["full"])){
-							
-							foreach($item["sitelinks"]["full"] as $link){
-								
-								$sublinks[] = [
-									"title" => $link["title"],
-									"date" => null,
-									"description" =>
-										$this->titledots(
-											strip_tags(
-												html_entity_decode(
-													$link["snippet"]
-												)
-											)
-										),
-									"url" => $link["url"]
-								];
-							}
-						}
-						
-						$out["web"][] = [
-							"title" => $item["title"],
-							"description" =>
-								$this->titledots(
-									strip_tags(
-										html_entity_decode(
-											$item["snippet"]
-										)
-									)
-								),
-							"url" => $item["url"],
-							"date" => null,
-							"type" => "web",
-							"thumb" => [
-								"url" => null,
-								"ratio" => null
-							],
-							"sublink" => $sublinks,
-							"table" => []
-						];
-						break;
-				}
+				$out["web"][] = [
+					"title" => $item["title"],
+					"description" => str_replace("\n", " ", $item["description"]),
+					"url" => $item["url"],
+					"date" => null,
+					"type" => "web",
+					"thumb" => [
+						"url" => null,
+						"ratio" => null
+					],
+					"sublink" => [],
+					"table" => []
+				];
 			}
 		}
 		
@@ -445,7 +407,6 @@ class yep{
 			"limit" => 99 // for some reason they dont show anything sometimes at 100 results
 		];
 		
-		if($get["nsfw"] == "no"){ $filters["safe_search"] = true; }
 		if($get["lang"] != "any"){ $filters["language"] = [ $get["lang"] ]; }
 		
 		// add api key
