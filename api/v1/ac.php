@@ -7,7 +7,7 @@ class autocomplete{
 	
 	public function __construct(){
 		
-		header("Content-Type: application/json");
+		header("Content-Type: application/x-suggestions+json");
 		
 		$this->scrapers = [
 			"brave" => "https://search.brave.com/api/suggest?q={searchTerms}",
@@ -18,7 +18,6 @@ class autocomplete{
 			"marginalia" => "https://search.marginalia.nu/suggest/?partial={searchTerms}",
 			"yt" => "https://suggestqueries-clients6.youtube.com/complete/search?client=youtube&q={searchTerms}",
 			"sc" => "",
-			"startpage" => "https://www.startpage.com/suggestions?q={searchTerms}&format=opensearch&segment=startpage.defaultffx&lui=english",
 			"kagi" => "https://kagi.com/api/autosuggest?q={searchTerms}"
 		];
 		
