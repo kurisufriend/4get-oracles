@@ -3,32 +3,45 @@
 header("Content-Type: application/xml");
 include "data/config.php";
 
-$domain =
-	htmlspecialchars(
-		(isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on" ? "https" : "http") .
-		'://' . $_SERVER["HTTP_HOST"]
-	);
+$host = strtolower(explode(":", $_SERVER["HTTP_HOST"], 2)[0]);
 
+// detect if 4get should serve the HTTPS endpoint
 if(
 	preg_match(
-		'/\.onion$/',
-		$domain
+		'/\.(onion|i2p)$/',
+		strtolower($host),
+		$match
 	)
 ){
 	
-	$onion = true;
+	$ssl = false;
+	$src = $match[1];
+}elseif(
+	is_string(
+		filter_var(
+			$host,
+			FILTER_VALIDATE_IP
+		)
+	) ||
+	$host == "localhost"
+){
+	
+	$ssl = false;
+	$src = "localhost";
 }else{
 	
-	$onion = false;
+	$ssl = true;
 }
 
+$domain = ($ssl ? "https" : "http") . "://" . $_SERVER["HTTP_HOST"];
+
 echo
-	'<?xml version="1.0" encoding="UTF-8"?>' .
 	'<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">' .
-		'<ShortName>' . htmlspecialchars(config::SERVER_NAME) . ($onion ? " (onion)" : "") . '</ShortName>' .
+		'<ShortName>' . htmlspecialchars(config::SERVER_NAME) . ($ssl === false ? " ({$src})" : "") . '</ShortName>' .
+		'<Description>' . htmlspecialchars(config::SERVER_SHORT_DESCRIPTION) . '</Description>' .
 		'<InputEncoding>UTF-8</InputEncoding>' .
-		'<Image width="16" height="16">' . $domain . '/favicon.ico</Image>' .
-		'<Url type="text/html" method="GET" template="' . $domain . '/web?s={searchTerms}"/>';
+		'<Image width="32" height="32" type="image/x-icon">' . htmlspecialchars($domain) . '/favicon.ico</Image>' .
+		'<Url rel="results" type="text/html" method="GET" template="' . htmlspecialchars($domain) . '/web?s={searchTerms}"/>';
 
 if(
 	isset($_GET["ac"]) &&

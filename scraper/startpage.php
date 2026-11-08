@@ -545,17 +545,20 @@ class startpage{
 			switch($category["display_type"]){
 				
 				case "web-google":
+				case "web-bing":
 					foreach($category["results"] as $result){
 						
 						$sublinks = [];
 						
-						foreach($result["siteLinks"] as $sublink){
-							
-							$sublinks[] = [
-								"title" => $sublink["title"],
-								"description" => null,
-								"url" => $sublink["clickUrl"]
-							];
+						if(isset($result["siteLinks"])){
+							foreach($result["siteLinks"] as $sublink){
+								
+								$sublinks[] = [
+									"title" => $sublink["title"],
+									"description" => null,
+									"url" => $sublink["clickUrl"]
+								];
+							}
 						}
 						
 						$description =
@@ -596,15 +599,17 @@ class startpage{
 						
 						$out["web"][] = [
 							"title" =>
-								$this->titledots(
-									html_entity_decode(
-										$this->fuckhtml
-										->getTextContent(
-											$result["title"]
+								$this->remove_penguins(
+									$this->titledots(
+										html_entity_decode(
+											$this->fuckhtml
+											->getTextContent(
+												$result["title"]
+											)
 										)
 									)
 								),
-							"description" => $description,
+							"description" => $this->remove_penguins($description),
 							"url" => $result["clickUrl"],
 							"date" => $date,
 							"type" => "web",
@@ -619,7 +624,42 @@ class startpage{
 					break;
 				
 				case "images-qi-top":
+				case "images-bing-top":
 					foreach($category["results"] as $result){
+						
+						if(isset($result["mdThumbnailWidth"])){
+							
+							$thumb_width = $result["mdThumbnailWidth"];
+						}elseif(isset($result["thumbnailWidth"])){
+							
+							$thumb_width = $result["thumbnailWidth"];
+						}else{
+							
+							$thumb_width = null;
+						}
+						
+						if(isset($result["mdThumbnailHeight"])){
+							
+							$thumb_height = $result["mdThumbnailHeight"];
+						}elseif(isset($result["thumbnailHeight"])){
+							
+							$thumb_height = $result["thumbnailHeight"];
+						}else{
+							
+							$thumb_height = null;
+						}
+						
+						if(isset($result["mdThumbnailUrl"])){
+							
+							$thumb_source = $result["mdThumbnailUrl"];
+						}elseif(isset($result["thumbnailUrl"])){
+							
+							$thumb_source = $result["thumbnailUrl"];
+						}else{
+							
+							// should not happen
+							continue;
+						}
 						
 						$out["image"][] = [
 							"title" =>
@@ -638,19 +678,17 @@ class startpage{
 									"height" => (int)$result["height"]
 								],
 								[
-									"url" => $this->unshitimage($result["mdThumbnailUrl"]),
-									"width" => (int)$result["mdThumbnailWidth"],
-									"height" => (int)$result["mdThumbnailHeight"]
+									"url" => $this->unshitimage($thumb_source),
+									"width" => (int)$thumb_width,
+									"height" => (int)$thumb_height
 								]
 							],
-							"url" =>
-								$result["altClickUrl"]
+							"url" => $result["altClickUrl"]
 						];
 					}
 					break;
 				
 				case "spellsuggest-google":
-					
 					if(isset($category["results"][0]["query"])){
 						
 						$out["spelling"] =
@@ -659,6 +697,60 @@ class startpage{
 								"using" => rawurldecode($json["render"]["query"]),
 								"correction" => html_entity_decode($category["results"][0]["query"])
 							];
+					}
+					break;
+				
+				case "spelladjust-bing":
+					if(isset($category["results"][0]["alterationDisplayQuery"])){
+						
+						$out["spelling"] =
+							[
+								"type" => "including",
+								"using" => $this->remove_penguins($category["results"][0]["alterationDisplayQuery"]),
+								"correction" => $category["results"][0]["originalQuery"]
+							];
+					}
+					break;
+					
+				case "aylf-bing-top":
+					if(isset($category["results"][0]["query"])){
+						
+						foreach($category["results"] as $ddm){
+							
+							$out["related"][] = $ddm["query"];
+						}
+					}
+					break;
+				
+				case "video-bing-top":
+					if(isset($category["results"][0]["clickUrl"])){
+						
+						foreach($category["results"] as $video){
+							
+							if(isset($video["thumbnailUrl"])){
+								
+								$thumb = [
+									"ratio" => "16:9",
+									"url" => $this->unshitimage($video["thumbnailUrl"])
+								];
+							}else{
+								
+								$thumb = [
+									"ratio" => null,
+									"url" => null
+								];
+							}
+							
+							$out["video"][] = [
+								"title" => $video["title"],
+								"description" => $this->remove_penguins($video["description"]),
+								"date" => isset($video["date"]) ? strtotime($video["date"]) : null,
+								"duration" => (int)$video["duration"] !== 0 ? (int)$video["duration"] / 1000 : null,
+								"views" => $video["viewCount"],
+								"thumb" => $thumb,
+								"url" => $video["clickUrl"]
+							];	
+						}
 					}
 					break;
 				
@@ -730,6 +822,36 @@ class startpage{
 						}
 						
 						$out["answer"][] = $answer;
+					}
+					break;
+				
+				case "news-bing-top":
+					if(isset($category["results"][0]["clickUrl"])){
+						
+						foreach($category["results"] as $news){
+							
+							if(isset($news["thumbnailUrl"])){
+								
+								$thumb = [
+									"ratio" => "16:9",
+									"url" => $news["thumbnailUrl"]
+								];
+							}else{
+								
+								$thumb = [
+									"ratio" => null,
+									"url" => null
+								];
+							}
+							
+							$out["news"][] = [
+								"title" => $this->remove_penguins($news["title"]),
+								"description" => $news["description"],
+								"date" => isset($news["date"]) ? strtotime($news["date"]) : null,
+								"thumb" => $thumb,
+								"url" => $news["clickUrl"],
+							];
+						}
 					}
 					break;
 			}
@@ -1246,13 +1368,9 @@ class startpage{
 		// get npt
 		$out["npt"] = $this->parse_npt($json, "news", $proxy, $cookies);
 		
+		//print_r($json);
+		
 		foreach($json["render"]["presenter"]["regions"]["mainline"] as $category){
-			
-			if($category["display_type"] != "news-bing"){
-				
-				// unsupported category
-				continue;
-			}
 			
 			foreach($category["results"] as $news){
 				
@@ -1276,10 +1394,10 @@ class startpage{
 				$out["news"][] = [
 					"title" => $this->titledots($this->remove_penguins($news["title"])),
 					"author" => $news["source"],
-					"description" => $this->titledots($this->remove_penguins($news["description"])),
-					"date" => (int)substr((string)$news["date"], 0, -3),
+					"description" => isset($news["description"]) ? $this->titledots($this->remove_penguins($news["description"])) : null,
+					"date" => isset($news["date"]) ? strtotime($news["date"]) : null,
 					"thumb" => $thumb,
-					"url" => $news["clickUrl"]
+					"url" => $this->remove_tracking_link($news["clickUrl"])
 				];
 			}
 		}
@@ -1325,6 +1443,30 @@ class startpage{
 		}
 		
 		return null;
+	}
+	
+	private function remove_tracking_link($url){
+		
+		// https://api.airfind.com/stats/adrequest/v1?clientid=51776&type=click&adCampaign=organicNewsArticle-prg-top&provider=prg&redirectURL=https%3A%2F%2Fvancouverisland.ctvnews.ca%2Fvideo%2F2026%2F11%2F02%2Ftrump-claims-concept-of-a-deal-with-canada%2F&brand=startpage.udog
+		$query = parse_url($url);
+		
+		if(
+			!isset($query["host"]) ||
+			$query["host"] != "api.airfind.com" ||
+			!isset($query["query"])
+		){
+			
+			return $url;
+		}
+		
+		parse_str($query["query"], $res);
+		
+		if(isset($res["redirectURL"])){
+			
+			return $res["redirectURL"];
+		}
+		
+		return $url;
 	}
 	
 	private function unshitimage($url){
