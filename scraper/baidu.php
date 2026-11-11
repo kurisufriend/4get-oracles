@@ -10,12 +10,8 @@ class baidu{
 		include "lib/fuckhtml.php";
 		$this->fuckhtml = new fuckhtml();
 		
+		$this->proc = curl_multi_init();
 		$this->handles = [];
-		$this->proc = null;
-		$this->handle_category = null;
-		$this->handle_increment = 0;
-		$this->sublink_increment = 0;
-		
 		$this->cookie = null;
 	}
 	
@@ -264,18 +260,19 @@ class baidu{
 		curl_close($curlproc);
 		return $data;
 	}
+
 	
 	private function redirect_add_url($proxy, $url){
 		
 		if(
 			preg_match(
-				'/^https?:\/\/(?:www\.)?baidu\.com\/link\?/',
+				'/^https?:\/\/(?:www\.|m\.)?baidu\.com\/(?:link\?|from=0\/)/',
 				$url
 			) === 0
 		){
 			
 			// not a baidu redirect
-			return;
+			return $url;
 		}
 		
 		$curlproc = curl_init();
@@ -305,174 +302,87 @@ class baidu{
 		curl_setopt($curlproc, CURLOPT_CONNECTTIMEOUT, 30);
 		curl_setopt($curlproc, CURLOPT_TIMEOUT, 30);
 		
-		curl_setopt($curlproc, CURLOPT_HEADER, true);
-		curl_setopt($curlproc, CURLOPT_NOBODY, true);
+		//curl_setopt($curlproc, CURLOPT_HEADER, true);
+		//curl_setopt($curlproc, CURLOPT_NOBODY, true);
 		
 		$this->backend->assign_proxy($curlproc, $proxy);
 		
 		curl_multi_add_handle($this->proc, $curlproc);
-		$this->handles[$this->handle_category][$this->handle_increment][$this->sublink_increment] = $curlproc;
+		$this->handles[] = [
+			"replacement" => $url,
+			"handle" => $curlproc
+		];
+		
+		return $url;
 	}
 	
-	private function resolve_urls($proxy, &$collection, $categories){
-		
-		$this->proc = curl_multi_init();
-		curl_multi_select($this->proc);
-		
-		foreach($categories as $category){
-			
-			$this->sublink_increment = 0;
-			$this->handle_increment = 0;
-			$this->handle_category = $category;
-			
-			foreach($collection[$category] as $item){
-				
-				$this->sublink_increment = 0;
-				$this->redirect_add_url($proxy, $item["url"]);
-				
-				if(isset($item["sublink"])){
-					
-					foreach($item["sublink"] as $sublink){
-						
-						$this->sublink_increment++;
-						$this->redirect_add_url($proxy, $sublink["url"]);
-					}
-				}
-				
-				$this->handle_increment++;
-			}
-		}
+	private function resolve_urls(&$scraped_data){
 		
 		do{
-			$status = curl_multi_exec($this->proc, $active);
-			
-		}while($active && $status == CURLM_OK);
+			do{
+				$status = curl_multi_exec($this->proc, $active);
+			}while($status === CURLM_CALL_MULTI_PERFORM);
+
+			if($active){
+				curl_multi_select($this->proc);
+			}
+
+		}while($active && $status === CURLM_OK);
 		
 		//
 		// if we reach this, we're done downloading garbage
 		//
 		
-		foreach($this->handles as $category => $v){
+		// parse redirect values & create data shit
+		$keys = [];
+		$replacements = [];
+		
+		for($i=0; $i<count($this->handles); $i++){
 			
-			foreach($v as $index => $data){
+			preg_match(
+				'/window\.location\.replace\("([^"]+)"\)/',
+				curl_multi_getcontent($this->handles[$i]["handle"]),
+				$location
+			);
+			
+			if(
+				preg_match(
+					'/^(https?:|)\/\//',
+					$location[1]
+				)
+			){
 				
-				foreach($this->handles[$category][$index] as $sublinkindex => $handle){
-					
-					preg_match(
-						'/location: ?(.*)$/im',
-						curl_multi_getcontent($handle),
-						$location
-					);
-					
-					if(isset($location[1])){
-						
-						if($sublinkindex === 0){
-							
-							$collection[$category][$index]["url"] = trim($location[1]);
-						}else{
-							
-							$collection[$category][$index]["sublink"][$sublinkindex - 1]["url"] = trim($location[1]);
-						}
-					}
-					
-					curl_multi_remove_handle($this->proc, $handle);
-					curl_close($handle);
-				}
+				$keys[] = $this->handles[$i]["replacement"];
+				$replacements[] = $location[1];
 			}
 		}
+		
+		$this->recursive_replace($keys, $replacements, $scraped_data);
 		
 		curl_multi_close($this->proc);
 	}
 	
-	private function resolve_images($proxy, &$data){
+	private function recursive_replace(&$keys, &$replacements, &$pointer){
 		
-		// get the image viewer that contains all of the images direct URLs
-		// for some reason, getting the second image's url in the set
-		// doesnt trigger the captcha
-		
-		if(
-			!isset($data["image"][1]["url"]) ||
-			preg_match(
-				'/^https:\/\/image\.baidu\.com\/search\/detail/',
-				$data["image"][1]["url"]
-			) === 0
-		){
+		foreach($pointer as $key => &$value){
 			
-			// we have an already resolved image link, do nothing
-			return;
-		}
-		
-		try{
-			
-			$html =
-				$this->get(
-					$proxy,
-					$data["image"][1]["url"],
-					[]
-				);
-		}catch(Exception $error){
-			
-			// fallback to the limited dataset we have
-			return;
-		}
-		
-		$this->fuckhtml->load($html);
-		
-		$script =
-			$this->fuckhtml
-			->getElementById(
-				"image-detail-data",
-				"script"
-			);
-		
-		if($script){
-			
-			$json =
-				json_decode(
-					$script["innerHTML"],
-					true
-				);
-			
-			if(
-				!isset($json["data"]["images"]) ||
-				count($json["data"]["images"]) === 0
-			){
+			if($key == "url"){
 				
-				// do nothing
-				return;
-			}
-			
-			//
-			// Discard all previously scraped images and use data
-			// from the newly downloaded image carousel
-			// the imageset !!should!! be the same
-			//
-			$data["image"] = [];
-			
-			foreach($json["data"]["images"] as $image){
+				$search =
+					array_search(
+						$value,
+						$keys
+					);
 				
-				parse_str(parse_url($image["thumburl"], PHP_URL_QUERY), $thumb_size);
+				if($search !== false){
+					
+					// replace url
+					$value = $replacements[$search];
+				}
 				
-				$data["image"][] = [
-					"title" =>
-						$this->fuckhtml
-						->getTextContent(
-							$image["titleShow"]
-						),
-					"source" => [
-						[
-							"url" => $image["objurl"],
-							"width" => (int)$image["width"],
-							"height" => (int)$image["height"]
-						],
-						[ // thumbnail
-							"url" => $image["thumburl"],
-							"width" => (int)$thumb_size["w"],
-							"height" => (int)$thumb_size["h"]
-						]
-					],
-					"url" => $image["fromUrl"]
-				];
+			}elseif(is_array($value)){
+				
+				$this->recursive_replace($keys, $replacements, $value);
 			}
 		}
 	}
@@ -485,16 +395,14 @@ class baidu{
 			
 			$json = json_decode($json, true);
 			$this->cookie = $json["cookie"];
-			$npt_data = $json["req"];
-			
-			$npt_data["pn"] = $npt_data["pn"] + 20;
+			$target = $json["target"];
 			
 			try{
 				
 				$html = $this->get(
 					$proxy,
-					"https://www.baidu.com/s",
-					$npt_data
+					$target,
+					[]
 				);
 			}catch(Exception $error){
 				
@@ -513,8 +421,7 @@ class baidu{
 			//$this->get($proxy, "https://www.baidu.com", []);
 			
 			$npt_data = [
-				"wd" => $get["s"],
-				"rn" => 20
+				"word" => $get["s"]
 			];
 			
 			// &gpc=stf%3D0%2C1752638400|stftype%3D2
@@ -535,24 +442,22 @@ class baidu{
 				
 				$html = $this->get(
 					$proxy,
-					"https://www.baidu.com/s",
+					"https://m.baidu.com/s",
 					$npt_data
 				);
 			}catch(Exception $error){
 				
 				throw new Exception("Failed to fetch search page");
 			}
-			
-			$npt_data["pn"] = 0;
+			//$html = file_get_contents("scraper/baidu.html");
 		}
 		
-		return $this->parse_search($proxy, "web", $npt_data, $html);
+		return $this->parse_search($proxy, "web", $html);
 	}
 	
-	private function parse_search($proxy, $pagetype, $npt_data, $html){
+	private function parse_search($proxy, $pagetype, $html){
 		
-		// @HACK
-		// remove newlines from the html, cause it fucks with fuckhtml
+		// hack, maybe not needed anymore
 		$html = str_replace(["\n", "\r"], "", $html);
 		
 		$out = [
@@ -575,338 +480,176 @@ class baidu{
 		
 		$this->detect_ass();
 		
-		$datafields =
-			$this->fuckhtml
-			->getElementsByAttributeName(
-				"id",
-				"div"
-			);
-		
-		//
-		// Get next page
-		//
+		// get next page
 		$npt =
 			$this->fuckhtml
 			->getElementsByClassName(
-				"n",
+				"new-nextpage-only",
 				"a"
 			);
+		
+		if(count($npt) === 0){
+			
+			$npt =
+				$this->fuckhtml
+				->getElementsByClassName(
+					"new-nextpage",
+					"a"
+				);
+		}
 		
 		if(count($npt) !== 0){
 			
 			$out["npt"] =
 				$this->backend->store(
 					json_encode([
-						"req" => $npt_data,
-						"cookie" => $this->cookie
+						"cookie" => $this->cookie,
+						"target" =>
+							$this->fuckhtml
+							->getTextContent(
+								$npt[0]["attributes"]["href"]
+							)
 					]),
-					$pagetype,
+					"web",
 					$proxy
 				);
 		}
 		
-		//
-		// Get related searches
-		//
-		$related_container =
+		// get "articles"
+		$articles =
 			$this->fuckhtml
-			->getElementById(
-				"rs_new",
-				$datafields
+			->getElementsByTagName(
+				"article"
 			);
 		
-		if($related_container){
+		foreach($articles as $article){
 			
-			$this->fuckhtml->load($related_container);
+			//print_r($article);
 			
-			$as =
-				$this->fuckhtml
-				->getElementsByClassName(
-					"c-color-link",
-					"a"
-				);
-			
-			foreach($as as $a){
-				
-				$text =
-					explode(
-						">",
-						$this->fuckhtml
-						->getTextContent(
-							$a
-						),
-						2
-					);
-				
-				$out["related"][] = $text[count($text) - 1];
-			}
-		}
-		
-		foreach($datafields as $datafield){
+			$this->fuckhtml->load($article);
 			
 			if(
-				!isset($datafield["attributes"]["id"]) ||
-				preg_match(
-					'/^[0-9]+$/',
-					$datafield["attributes"]["id"]
-				) === 0
+				!isset($article["attributes"]["rl-link-data-ivk"]) &&
+				!isset($article["attributes"]["data-click-info"])
 			){
 				
-				// not a search result
+				// probe for related searches
+				$relateds =
+					$this->fuckhtml
+					->getElementsByClassName(
+						"sc-sublink",
+						"button"
+					);
+				
+				foreach($relateds as $related){
+					
+					$out["related"][] =
+						$this->fuckhtml
+						->getTextContent(
+							$related
+						);
+				}
 				continue;
 			}
 			
-			$this->fuckhtml->load($datafield);
-			$div =
-				$this->fuckhtml
-				->getElementsByTagName(
-					"div"
-				);
+			// find json object
+			$jsons = [];
 			
-			//
-			// Don't parse as a search result if it's a card
-			//
-			$tpl_probe =
-				$this->fuckhtml
-				->getElementsByAttributeValue(
-					"tpl",
-					"www_index",
-					[$datafield]
-				);
+			if(isset($article["attributes"]["rl-link-data-ivk"])){	$jsons[] = &$article["attributes"]["rl-link-data-ivk"]; }
+			if(isset($article["attributes"]["data-click-info"])){	$jsons[] = &$article["attributes"]["data-click-info"]; }
+			if(isset($article["attributes"]["rl-link-data-log"])){	$jsons[] = &$article["attributes"]["rl-link-data-log"]; }
 			
-			if(
-				count($tpl_probe) === 0 &&
-				count(
-					$this->fuckhtml
-					->getElementsByClassName(
-						"cosc-card",
-						$div
-					)
-				) !== 0
-			){
-				
-				//
-				// Parse chinese youtube shorts
-				//
-				$ytshorts_probe =
-					$this->fuckhtml
-					->getElementsByClassName(
-						"tts-b-item",
-						$div
+			// fail
+			if(count($jsons) === 0){ continue; }
+			
+			$url = null;
+			
+			foreach($jsons as $json){
+				$json =
+					json_decode(
+						$this->fuckhtml
+						->getTextContent(
+							$json
+						),
+						true
 					);
 				
-				if(count($ytshorts_probe) !== 0){
+				$url = null;
+				if(isset($json["control"]["dataUrl"])){
 					
-					$videos =
-						$this->fuckhtml
-						->getElementsByAttributeValue(
-							"data-show",
-							"list",
-							$div
-						);
+					$url = $json["control"]["dataUrl"];
+					break;
+				}elseif(isset($json["control"]["default_url"])){
 					
-					foreach($videos as $video){
+					$url = $json["control"]["default_url"];
+					break;
+				}elseif(isset($json["extra"])){
+					
+					// decode extra object
+					$json2 = json_decode($json["extra"], true);
+					
+					if(isset($json2["url"])){
 						
-						$this->fuckhtml->load($video);
-						
-						$title =
-							$this->fuckhtml
-							->getElementsByClassName(
-								"cosc-title-slot",
-								"span"
-							);
-						
-						if(count($title) === 0){
-							
-							continue;
-						}
-						
-						$url =
-							$this->fuckhtml
-							->getElementsByTagName(
-								"a"
-							);
-						
-						if(count($url) === 0){
-							
-							continue;
-						}
-						
-						$image =
-							$this->fuckhtml
-							->getElementsByClassName(
-								"cos-image-body",
-								"img"
-							);
-						
-						if(count($image) === 0){
-							
-							$image = [
-								"ratio" => null,
-								"url" => null
-							];
-						}else{
-							
-							$image = [
-								"ratio" => "1:1",
-								"url" =>
-									$this->fuckhtml
-									->getTextContent(
-										$image[0]["attributes"]["src"]
-									)
-							];
-						}
-						
-						// get duration
-						$divs =
-							$this->fuckhtml
-							->getElementsByAttributeName(
-								"class",
-								"div"
-							);
-						
-						$duration = null;
-						foreach($divs as $probe){
-							
-							if(strpos($probe["attributes"]["class"], "tag-bottom-right") !== false){
-								
-								$duration =
-									$this->hms2int(
-										$this->fuckhtml
-										->getTextContent(
-											$probe
-										)
-									);
-								break;
-							}
-						}
-						
-						$out["video"][] = [
-							"title" =>
-								$this->fuckhtml
-								->getTextContent(
-									$title[0]
-								),
-							"description" => null,
-							"date" => null,
-							"duration" => $duration,
-							"views" => null,
-							"thumb" => $image,
-							"url" =>
-								$this->fuckhtml
-								->getTextContent(
-									$url[0]["attributes"]["href"]
-								)
-						];
+						// double chinese encryption
+						$url = rawurldecode(rawurldecode($json2["url"]));
+						break;
 					}
-				}
-				
-				//
-				// Parse image carousel
-				//
-				$is_image_carousel = false;
-				foreach($div as $d){
 					
-					if(
-						isset($d["attributes"]["class"]) &&
-						strpos($d["attributes"]["class"], "image-container") !== false
-					){
+					if(isset($json2["loc"])){
 						
-						$is_image_carousel = true;
+						$url = rawurldecode(rawurldecode($json2["loc"]));
 						break;
 					}
 				}
+			}
+			
+			// fail
+			if($url === null){
 				
-				if($is_image_carousel){
+				if(isset($article["attributes"]["rl-link-href"])){
 					
-					preg_match(
-						'/<!--s-data:([\S\s]*)-->/U',
-						$datafield["innerHTML"],
-						$matches
-					);
+					$url =
+						$this->fuckhtml
+						->getTextContent(
+							$article["attributes"]["rl-link-href"]
+						);
+				}else{
 					
-					if(isset($matches[1])){
-						
-						// weird behavior with the smaller image carousel where --cos* CSS variables are escaped wrong
-						$json =
-							$this->fuckhtml
-							->parseJsObject(
-								str_replace(
-									"-\-",
-									"--",
-									$matches[1]
-								)
-							);
-						
-						if(
-							$json !== null &&
-							isset($json["imageList"][0]["images"])
-						){
-							
-							// parse image carousel
-							foreach($json["imageList"][0]["images"] as $image){
-								
-								parse_str(parse_url($image["thumburl"], PHP_URL_QUERY), $thumb_size);
-								
-								$out["image"][] = [
-									"title" => "image",
-									"source" => [
-										[
-											"url" => $image["objurl"],
-											"width" => (int)$image["width"],
-											"height" => (int)$image["height"]
-										],
-										[ // thumbnail
-											"url" => $image["thumburl"],
-											"width" => (int)$thumb_size["w"],
-											"height" => (int)$thumb_size["h"]
-										]
-									],
-									"url" => $image["jumpUrl"]
-								];
-							}
-						}
-					}
+					// horrible fail
+					continue;
 				}
-				continue;
 			}
 			
-			if(!isset($datafield["attributes"]["mu"])){
-				
-				// dont scrape if we dont have the direct link
-				continue;
-			}
-			
-			// class:FYB_RD -> News garbage, IGNORE
-			
-			$result =
-				array_merge(
-					$tpl_probe,
-					$this->fuckhtml
-					->getElementsByClassName(
-						"result",
-						[$datafield]
-					)
+			// get title
+			$title =
+				$this->fuckhtml
+				->getElementsByAttributeValue(
+					"role",
+					"title",
+					"div"
 				);
 			
-			if(count($result) !== 0){
-				
-				//
-				// Parse normal search result
-				//
+			if(count($title) === 0){
 				
 				$title =
 					$this->fuckhtml
 					->getElementsByClassName(
-						"cosc-title-a",
-						"a"
+						"cosc-title-slot",
+						"span"
 					);
+			}
+			
+			if(count($title) === 0){
 				
-				if(count($title) === 0){
-					
-					// should not happen
-					continue;
-				}
+				$title =
+					$this->fuckhtml
+					->getElementsByClassName(
+						"cu-title",
+						"p"
+					);
+			}
+			
+			if(count($title) !== 0){
 				
 				$title =
 					$this->titledots(
@@ -915,645 +658,119 @@ class baidu{
 							$title[0]
 						)
 					);
+			}else{
+				
+				$title = "Untitled";
+			}
+			
+			// get description
+			$description =
+				$this->fuckhtml
+				->getElementsByAttributeValue(
+					"data-module",
+					"abstract",
+					"div"
+				);
+			
+			if(count($description) === 0){
 				
 				$description =
 					$this->fuckhtml
 					->getElementsByAttributeValue(
-						"data-module",
-						"abstract",
-						$div
+						"role",
+						"text",
+						"div"
 					);
-				
-				if(count($description) !== 0){
-					
-					$this->fuckhtml->load($description[0]);
-					
-					$description =
-						$this->fuckhtml
-						->getElementsByAttributeName(
-							"class",
-							"span"
-						);
-					
-					$found_desc = false;
-					foreach($description as $desc){
-						
-						if(stripos($desc["attributes"]["class"], "summary-text") !== false){
-							
-							$found_desc = true;
-							$description =
-								$this->titledots(
-									$this->fuckhtml
-									->getTextContent(
-										$desc
-									)
-								);
-							break;
-						}
-					}
-					
-					if($found_desc === false){
-						
-						$description = null;
-					}
-					
-					$this->fuckhtml->load($datafield);
-				}else{
-					
-					$description = null;
-				}
-				
-				// parse date
-				$date_probe =
-					$this->fuckhtml
-					->getElementsByClassName(
-						"cos-color-text-minor",
-						"span"
-					);
-				
-				if(count($date_probe) !== 0){
-					
-					$date =
-						$this->parse_time(
-							$this->fuckhtml
-							->getTextContent(
-								$date_probe[0]
-							)
-						);
-				}else{
-					
-					$date = null;
-				}
-				
-				// parse image
-				$img =
-					$this->fuckhtml
-					->getElementsByTagName(
-						"img"
-					);
-				
-				if(count($img) !== 0){
-					
-					$image = [
-						"ratio" => "16:9",
-						"url" =>
-							$this->unfuckthumb(
-								$this->fuckhtml
-								->getTextContent(
-									$img[0]["attributes"]["src"]
-								)
-							)
-					];
-				}else{
-					
-					$image = [
-						"ratio" => null,
-						"url" => null
-					];
-				}
-				
-				// get page type
-				$pagetype_probe =
-					$this->fuckhtml
-					->getElementsByTagName(
-						"b"
-					);
-				
-				$pagetype = "web";
-				foreach($pagetype_probe as $probe){
-					
-					$pagetype =
-						strtolower(
-							trim(
-								$this->fuckhtml
-								->getTextContent(
-									$probe
-								),
-								" 【】"
-							)
-						);
-				}
-				
-				// get extra links
-				$sublinks = [];
-				
-				foreach($div as $d){
-					
-					if(
-						isset($d["attributes"]["class"]) &&
-						strpos($d["attributes"]["class"], "exta-link") !== false
-					){
-						
-						$this->fuckhtml->load($d);
-						
-						$links =
-							$this->fuckhtml
-							->getElementsByClassName(
-								"cos-space-mt-xs",
-								"div"
-							);
-						
-						foreach($links as $link){
-							
-							$this->fuckhtml->load($link);
-							$s_title =
-								$this->fuckhtml
-								->getElementsByTagName(
-									"h3"
-								);
-							
-							if(count($s_title) === 0){
-								
-								// should not happen
-								continue;
-							}
-							
-							$data2 =
-								json_decode(
-									$this->fuckhtml
-									->getTextContent(
-										$s_title[0]["attributes"]["data-click"]
-									),
-									true
-								);
-							
-							if(!isset($data2["clk_info"])){
-								
-								// wtf
-								continue;
-							}
-							
-							$data2 =
-								json_decode(
-									$data2["clk_info"],
-									true
-								);
-							
-							if(!isset($data2["url"])){
-								
-								// no link, fuck off
-								continue;
-							}
-							
-							$url =
-								rawurldecode(
-									$data2["url"]
-								);
-							
-							$data =
-								$this->fuckhtml
-								->getElementsByTagName(
-									"p"
-								);
-							
-							$s_description = null;
-							
-							if(count($data) !== 0){
-								
-								$data =
-									json_decode(
-										$this->fuckhtml
-										->getTextContent(
-											$data[0]["attributes"]["sub-show-log"]
-										),
-										true
-									);
-								
-								if(isset($data["ext"]["content"])){
-									
-									$s_description = $data["ext"]["content"];
-								}
-							}
-							
-							$sublinks[] = [
-								"title" =>
-									$this->fuckhtml
-									->getTextContent(
-										$s_title[0]
-									),
-								"description" => $s_description,
-								"url" => $url,
-								"date" => null
-							];
-						}
-						break;
-					}
-				}
-				
-				$out["web"][] = [
-					"title" => $title,
-					"description" => $description,
-					"url" =>
-						$this->fuckhtml
-						->getTextContent(
-							$datafield["attributes"]["mu"]
-						),
-					"date" => $date,
-					"type" => $pagetype,
-					"thumb" => $image,
-					"sublink" => $sublinks,
-					"table" => []
-				];
-				
-				continue;
 			}
 			
-			// parse special result
-			$result =
-				$this->fuckhtml
-				->getElementsByClassName(
-					"result-op",
-					[$datafield]
-				);
-			
-			if(count($result) !== 0){
+			if(count($description) === 0){
 				
-				//
-				// Parse video carousel
-				//
-				if(
-					isset($datafield["attributes"]["tpl"]) &&
-					stripos($datafield["attributes"]["tpl"], "video") !== false
-				){
-					
-					preg_match(
-						'/<!--s-data:([\S\s]*)-->/U',
-						$datafield["innerHTML"],
-						$matches
-					);
-					
-					if(isset($matches[1])){
-					
-						$json =
-							json_decode(
-								$matches[1],
-								true
-							);
-						
-						if($json !== null){
-							
-							foreach($json["videoList"] as $video){
-								
-								$out["video"][] = [
-									"title" => $video["title"],
-									"description" =>
-										$this->titledots(
-											$video["desc"]
-										),
-									"date" =>
-										$this->parse_time(
-											$video["pubTime"]
-										),
-									"duration" =>
-										$this->hms2int(
-											$video["duration"]
-										),
-									"views" =>
-										$this->parse_viewcount(
-											$video["playCount"]
-										),
-									"thumb" => [
-										"ratio" => "16:9",
-										"url" => $video["poster"]
-									],
-									"url" => $video["bindProps"]["link"]
-								];
-							}
-						}
-					}
-					continue;
-				}
-				
-				//
-				// Special result div (wiki entries, rich divs)
-				//
-				$title =
-					$this->fuckhtml
-					->getElementsByTagName(
-						"h3"
-					);
-				
-				if(count($title) === 0){
-					
-					// should have a title somewhere
-					continue;
-				}
-				
-				$title =
-					explode(
-						">",
-						$this->fuckhtml
-						->getTextContent(
-							$title[0]
-						),
-						2
-					);
-				
-				if(count($title) === 2){
-					
-					$title = $title[1];
-				}else{
-					
-					$title = $title[0];
-				}
-				
-				// probe for wiki-like entry
 				$description =
 					$this->fuckhtml
 					->getElementsByClassName(
-						"sc-paragraph",
-						"p"
+						"cos-gutter",
+						"div"
 					);
-				
-				if(count($description) === 0){
-					
-					// try and get grey description
-					$description =
-						$this->fuckhtml
-						->getElementsByClassName(
-							"c-color-gray2",
-							"p"
-						);
-					
-					if(count($description) === 0){
-						
-						// probe for special social media description
-						$description =
-							$this->fuckhtml
-							->getElementsByClassName(
-								"c-color-text",
-								"div"
-							);
-						
-						if(isset($description[0]["attributes"]["aria-label"])){
-							
-							$description =
-								$this->fuckhtml
-								->getTextContent(
-									$description[0]
-									["attributes"]
-									["aria-label"]
-								);
-						}else{
-							
-							// check for news tab description
-							$span =
-								$this->fuckhtml
-								->getElementsByClassName(
-									"c-font-normal",
-									"span"
-								);
-							
-							$description = null;
-							
-							foreach($span as $s){
-								
-								if(isset($s["attributes"]["aria-label"])){
-									
-									$description =
-										$this->titledots(
-											$this->fuckhtml
-											->getTextContent(
-												$span[count($span) - 1]
-											)
-										);
-									
-									break;
-								}
-							}
-						}
-					}else{
-						
-						$description =
-							$this->fuckhtml
-							->getTextContent(
-								$description[0]
-							);
-					}
-					
-				}else{
-					
-					preg_match(
-						'/<!--s-text-->([\S\s]*)<!--\/s-text-->/U',
-						$description[count($description) - 1]["innerHTML"],
-						$matches
-					);
-					
-					if(isset($matches[1])){
-						
-						$description =
-							$this->titledots(
-								$this->fuckhtml
-								->getTextContent(
-									$matches[1]
-								)
-							);
-					}else{
-						
-						$description = null;
-					}
-				}
-				
-				// get thumbnail
-				$thumb =
-					$this->fuckhtml
-					->getElementsByTagName(
-						"img"
-					);
-				
-				if(count($thumb) !== 0){
-					
-					$thumb = [
-						"ratio" => "1:1",
-						"url" =>
-							$this->unfuckthumb(
-								$this->fuckhtml
-								->getTextContent(
-									$thumb[0]["attributes"]["src"]
-								)
-							)
-					];
-				}else{
-					
-					$thumb = [
-						"ratio" => null,
-						"url" => null
-					];
-				}
-				
-				// get sublinks
-				preg_match(
-					'/<!--s-data:([\S\s]*)-->/U',
-					$datafield["innerHTML"],
-					$matches
-				);
-				
-				$sublinks = [];
-				
-				if(isset($matches[1])){
-					
-					$json =
-						json_decode(
-							$matches[1],
-							true
-						);
-					
-					if($json !== null){
-						
-						if(isset($json["buttons"])){
-							
-							foreach($json["buttons"] as $button){
-								
-								$sublinks[] = [
-									"title" => $button["text"],
-									"description" => null,
-									"date" => null,
-									"url" => $button["url"]
-								];
-							}
-						}elseif(isset($json["mthreadList"])){
-							
-							foreach($json["mthreadList"] as $thread){
-								
-								$sublinks[] = [
-									"title" =>
-										$this->fuckhtml
-										->getTextContent(
-											$thread["title"]
-										),
-									"description" => null,
-									"date" => null,
-									"url" => $thread["ttsInfo"]["titleUrl"]
-								];
-							}
-						}
-					}
-				}
-				
-				// get URL
-				// handle http://fakeurl.baidu.com bullshit
-				$url =
-					$this->fuckhtml
-					->getTextContent(
-						$datafield["attributes"]["mu"]
-					);
-				
-				if(
-					preg_match(
-						'/^https?:\/\/(?:fakeurl|nourl)(?:\.ubs)?\.baidu\.com/',
-						$url
-					)
-				){
-					
-					// we got some bullshit, get jumpUrl instead
-					$as =
-						$this->fuckhtml
-						->getElementsByTagName(
-							"a"
-						);
-					
-					if(count($as) !== 0){
-						
-						$url =
-							$this->fuckhtml
-							->getTextContent(
-								$as[0]["attributes"]["href"]
-							);
-					}
-				}
-				
-				// get xueshu sublinks
-				// get list
-				$xueshu_list =
-					$this->fuckhtml
-					->getElementsByClassName(
-						"op-xueshu-links-d20-list",
-						$div
-					);
-				
-				if(count($xueshu_list) !== 0){
-					
-					$this->fuckhtml->load($xueshu_list[0]);
-					
-					$rows =
-						$this->fuckhtml
-						->getElementsByClassName(
-							"c-row",
-							"div"
-						);
-					
-					// remove "read more" bullshit
-					foreach($rows as $row){
-						
-						if(strpos($row["attributes"]["class"], "op-xueshu-links-more") !== false){
-							
-							$xueshu_list[0]["innerHTML"] =
-								str_replace(
-									$row["outerHTML"],
-									"",
-									$xueshu_list[0]["innerHTML"]
-								);
-						}
-					}
-					
-					$this->fuckhtml->load($xueshu_list[0]);
-					
-					foreach($rows as $row){
-						
-						$this->fuckhtml->load($row);
-						
-						if(strpos($row["attributes"]["class"], "op-xueshu-links-more") !== false){
-							
-							continue;
-						}
-						
-						$as =
-							$this->fuckhtml
-							->getElementsByTagName(
-								"a"
-							);
-						
-						foreach($as as $a){
-							
-							$sublinks[] = [
-								"title" =>
-									$this->titledots(
-										$this->fuckhtml
-										->getTextContent(
-											$a
-										)
-									),
-								"description" => null,
-								"date" => null,
-								"url" =>
-									$this->fuckhtml
-									->getTextContent(
-										$a["attributes"]["href"]
-									)
-							];
-						}
-					}
-				}
-				
-				$out["web"][] = [
-					"title" => $title,
-					"description" => $description,
-					"url" => $url,
-					"date" => null,
-					"type" => "web",
-					"thumb" => $thumb,
-					"sublink" => $sublinks,
-					"table" => []
-				];
-				continue;
 			}
+			
+			if(count($description) !== 0){
+				
+				$description =
+					$this->titledots(
+						$this->fuckhtml
+						->getTextContent(
+							$description[0]
+						)
+					);
+			}else{
+				
+				$description = null;
+			}
+			
+			// get date
+			$date =
+				$this->fuckhtml
+				->getElementsByClassName(
+					"cosc-source-caption",
+					"span"
+				);
+			
+			if(count($date) !== 0){
+				
+				$date =
+					$this->parse_time(
+						$this->fuckhtml
+						->getTextContent(
+							$date[0]
+						)
+					);
+			}else{
+				
+				$date = null;
+			}
+			
+			// get thumb
+			$image =
+				$this->fuckhtml
+				->getElementsByClassName(
+					"cos-image-body",
+					"img"
+				);
+			
+			if(count($image) !== 0){
+				
+				$thumb = [
+					"ratio" => "16:9",
+					"url" =>
+						$this->fuckhtml
+						->getTextContent(
+							$image[0]["attributes"]["src"]
+						)
+				];
+			}else{
+				
+				$thumb = [
+					"ratio" => null,
+					"url" => null
+				];
+			}
+			
+			$out["web"][] = [
+				"title" => $title,
+				"description" => $description,
+				"url" => $this->redirect_add_url($proxy, $url),
+				"date" => $date,
+				"type" => "web",
+				"thumb" => $thumb,
+				"sublink" => [],
+				"table" => []
+			];
 		}
 		
-		//
-		// Remove tracking URLs and fetch additonal image resources
-		//
-		$this->resolve_urls($proxy, $out, ["web", "video"]);
-		$this->resolve_images($proxy, $out);
+		// dedup related searches
+		$out["related"] = array_values(array_unique($out["related"]));
+		
+		$this->resolve_urls($out);
 		
 		return $out;
 	}
@@ -1966,7 +1183,7 @@ class baidu{
 		
 		return $out;
 	}
-	
+	/*
 	public function news($get){
 		
 		//$proxy = $this->backend->get_ip();
@@ -2049,7 +1266,7 @@ class baidu{
 		}
 		
 		return $out;
-	}
+	}*/
 	
 	private function unfuckthumb($url){
 		
