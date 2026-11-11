@@ -1133,7 +1133,7 @@ class frontend{
 						"mwmbl" => "Mwmbl",
 						"mojeek" => "Mojeek",
 						"naver" => "Naver",
-						"baidu" => "Baidu",
+						//"baidu" => "Baidu",
 						"coccoc" => "Cốc Cốc",
 						"solofield" => "Solofield",
 						"marginalia" => "Marginalia",
@@ -1207,7 +1207,7 @@ class frontend{
 						"yahoo_japan" => "Yahoo! JAPAN",
 						"startpage" => "Startpage",
 						//"mojeek" => "Mojeek",
-						"baidu" => "Baidu"
+						//"baidu" => "Baidu"
 					]
 				];
 				break;
