@@ -154,7 +154,7 @@ class config{
 	
 	// Default user agent to use for scraper requests. Sometimes ignored to get specific webpages
 	// Changing this might break things.
-	const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:157.0) Gecko/20100101 Firefox/157.0";
+	const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0";
 	
 	// User agent to use with 4get-friendly APIs
 	const USER_AGENT_FRIENDLY = "4get-scrapist (+https://4get.ca)";
@@ -168,7 +168,6 @@ class config{
 	const PROXY_YAHOO_JAPAN = false;
 	const PROXY_BRAVE = false;
 	const PROXY_GOOGLE = false;
-	const PROXY_GOOGLE_ALT = false; // alt proxies for url resolution
 	const PROXY_GOOGLE_API = false;
 	const PROXY_GOOGLE_CSE = false;
 	const PROXY_STARTPAGE = false;
@@ -226,6 +225,7 @@ class config{
 	// use the API (Eg: "public"). API has less filters.
 	const MARGINALIA_API_KEY = null;
 	
-	// Yep
+	// Scrapers to use the API on
 	const YEP_USE_API = false;
+	const BRAVE_USE_API = false;
 }
