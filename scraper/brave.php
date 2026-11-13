@@ -173,6 +173,7 @@ class brave{
 			"Referer: https://search.brave.com/",
 			"DNT: 1",
 			"Sec-GPC: 1",
+			"Cookie: safesearch={$nsfw}; country={$country}; summarizer=0",
 			"Connection: keep-alive",
 			"Upgrade-Insecure-Requests: 1",
 			"Sec-Fetch-Dest: document",
@@ -181,6 +182,45 @@ class brave{
 			"Sec-Fetch-User: ?1",
 			"Priority: u=0, i",
 			"TE: trailers"
+		];
+		
+		$curlproc = curl_init();
+		
+		if($get !== []){
+			$get = http_build_query($get);
+			$url .= "?" . $get;
+		}
+		
+		curl_setopt($curlproc, CURLOPT_URL, $url);
+		
+		curl_setopt($curlproc, CURLOPT_ENCODING, ""); // default encoding
+		curl_setopt($curlproc, CURLOPT_HTTPHEADER, $headers);
+		
+		curl_setopt($curlproc, CURLOPT_RETURNTRANSFER, true);
+		curl_setopt($curlproc, CURLOPT_SSL_VERIFYHOST, 2);
+		curl_setopt($curlproc, CURLOPT_SSL_VERIFYPEER, true);
+		curl_setopt($curlproc, CURLOPT_CONNECTTIMEOUT, 30);
+		curl_setopt($curlproc, CURLOPT_TIMEOUT, 30);
+
+		$this->backend->assign_proxy($curlproc, $proxy);
+		
+		$data = curl_exec($curlproc);
+		
+		if(curl_errno($curlproc)){
+			throw new Exception(curl_error($curlproc));
+		}
+		
+		curl_close($curlproc);
+		return $data;
+	}
+	
+	private function api_get($proxy, $key, $url, $get = []){
+		
+		$headers = [
+			"User-Agent: " . config::USER_AGENT,
+			"Accept: application/json",
+			"Accept-Encoding: gzip",
+			"X-Subscription-Token: " . $key
 		];
 		
 		$curlproc = curl_init();
@@ -256,6 +296,11 @@ class brave{
 	
 	public function web($get){
 		
+		if(config::BRAVE_USE_API){
+			
+			return $this->api_web($get);
+		}
+		
 		if($get["npt"]){
 			
 			// get next page data
@@ -281,7 +326,7 @@ class brave{
 				throw new Exception("Search term is empty!");
 			}
 			
-			if(strlen($search) > 2048){
+			if(strlen($search) > 600){
 				
 				throw new Exception("Search term is too long!");
 			}
@@ -1049,10 +1094,10 @@ class brave{
 						"description" => $this->titledots($news["description"]),
 						"date" => isset($news["age"]) ? strtotime($news["age"]) : null,
 						"thumb" =>
-							isset($video["thumbnail"]["src"]) ?
+							isset($news["thumbnail"]["src"]) ?
 							[
 								"ratio" => "16:9",
-								"url" => $this->unshiturl($video["thumbnail"]["src"])
+								"url" => $this->unshiturl($news["thumbnail"]["src"])
 							] :
 							[
 								"ratio" => null,
@@ -1125,13 +1170,18 @@ class brave{
 	
 	public function image($get){
 		
+		if(config::BRAVE_USE_API){
+			
+			return $this->api_image($get);
+		}
+		
 		$search = $get["s"];
 		if(strlen($search) === 0){
 			
 			throw new Exception("Search term is empty!");
 		}
 		
-		if(strlen($search) > 2048){
+		if(strlen($search) > 400){
 			
 			throw new Exception("Search term is too long!");
 		}
@@ -1214,6 +1264,11 @@ class brave{
 	
 	public function video($get){
 		
+		if(config::BRAVE_USE_API){
+			
+			return $this->api_video($get);
+		}
+		
 		if($get["npt"]){
 			
 			[$npt, $proxy] = $this->backend->get($get["npt"], "videos");
@@ -1252,7 +1307,7 @@ class brave{
 				throw new Exception("Search term is empty!");
 			}
 			
-			if(strlen($search) > 2048){
+			if(strlen($search) > 400){
 				
 				throw new Exception("Search term is too long!");
 			}
@@ -1380,6 +1435,11 @@ class brave{
 	
 	public function news($get){
 		
+		if(config::BRAVE_USE_API){
+			
+			return $this->api_news($get);
+		}
+		
 		if($get["npt"]){
 			
 			[$req, $proxy] = $this->backend->get($get["npt"], "news");
@@ -1418,7 +1478,7 @@ class brave{
 				throw new Exception("Search term is empty!");
 			}
 			
-			if(strlen($search) > 2048){
+			if(strlen($search) > 400){
 				
 				throw new Exception("Search term is too long!");
 			}
@@ -1514,6 +1574,815 @@ class brave{
 					"url" => $news["url"]
 				];
 			}
+		}
+		
+		return $out;
+	}
+	
+	private function api_web($get){
+				
+		$keydata = $this->backend->get_key();
+		$proxy = $this->backend->get_ip($keydata["increment"]);
+		
+		if($get["npt"]){
+			
+			[$filters, $n] = $this->backend->get($get["npt"], "web");
+			$filters = json_decode($filters, true);
+			
+		}else{
+			
+			if(strlen($get["s"]) === 0){
+				
+				throw new Exception("Search term is empty!");
+			}
+			
+			if(strlen($get["s"]) > 600){
+				
+				throw new Exception("Search term is too long!");
+			}
+			
+			// push filters
+			$nsfw = $get["nsfw"];
+			$country = $get["country"];
+			$older = $get["older"];
+			$newer = $get["newer"];
+			$spellcheck = $get["spellcheck"];
+			
+			$filters = [
+				"q" => $get["s"],
+				"count" => 20
+			];
+			
+			// freshness filter
+			if($newer !== false){
+				
+				$newer = date("Y-m-d", $newer);
+				
+				if($older === false){
+					
+					$older = date("Y-m-d", time());
+				}
+			}
+			
+			if(
+				is_string($older) === false &&
+				$older !== false
+			){
+				
+				$older = date("Y-m-d", $older);
+				
+				if($newer === false){
+					
+					$newer = "1970-01-02";
+				}
+			}
+			
+			if($older !== false){
+				
+				$filters["freshness"] = "{$newer}to{$older}";
+			}
+			
+			// spellcheck
+			if($spellcheck == "no"){
+				
+				$filters["spellcheck"] = "false";
+			}
+			
+			// country
+			if($country != "all"){
+				
+				$filters["country"] = strtoupper($country);
+			}
+			
+			switch($nsfw){
+				
+				case "yes": $filters["safesearch"] = "off"; break;
+				case "maybe": $filters["safesearch"] = "moderate"; break;
+				case "no": $filters["safesearch"] = "strict"; break;
+			}
+		}
+		
+		//$json = file_get_contents("scraper/brave4.json");
+		try{
+			$json =
+				$this->api_get(
+					$proxy,
+					$keydata["key"],
+					"https://api.search.brave.com/res/v1/web/search",
+					$filters
+				);
+			
+		}catch(Exception $error){
+			
+			throw new Exception("Could not fetch search page");
+		}
+		
+		$out = [
+			"status" => "ok",
+			"spelling" => [
+				"type" => "no_correction",
+				"using" => null,
+				"correction" => null
+			],
+			"npt" => null,
+			"answer" => [],
+			"web" => [],
+			"image" => [],
+			"video" => [],
+			"news" => [],
+			"related" => []
+		];
+		
+		$json = json_decode($json, true);
+		
+		if($json === null){
+			
+			throw new Exception("Failed to decode JSON");
+		}
+		
+		if(isset($json["error"])){
+			
+			if(isset($json["error"]["detail"])){
+				
+				throw new Exception("Brave returned an error: {$json["error"]["detail"]}");
+			}
+			
+			throw new Exception("Brave returned an unknown error");
+		}
+		
+		if(!isset($json["web"]["results"])){
+			
+			throw new Exception("Brave did not return a web results object");
+		}
+		
+		// parse web results
+		foreach($json["web"]["results"] as $result){
+			
+			$sublinks = [];
+			
+			if(isset($result["cluster"])){
+				
+				foreach($result["cluster"] as $sublink){
+					
+					$sublinks[] = [
+						"title" => $sublink["title"],
+						"description" =>
+							$this->titledots(
+								$this->fuckhtml
+								->getTextContent(
+									$sublink["description"]
+								)
+							),
+						"url" => $sublink["url"],
+						"date" => null
+					];
+				}
+			}
+			
+			if(isset($result["deep_results"]["buttons"])){
+				
+				foreach($result["deep_results"]["buttons"] as $sublink){
+					
+					$sublinks[] = [
+						"title" => $sublink["title"],
+						"description" => null,
+						"url" => $sublink["url"],
+						"date" => null
+					];
+				}
+			}
+			
+			$out["web"][] = [
+				"title" =>
+					$this->titledots(
+						$result["title"]
+					),
+				"description" =>
+					$this->titledots(
+						$this->fuckhtml
+						->getTextContent(
+							$result["description"]
+						)
+					),
+				"url" => $result["url"],
+				"date" => isset($result["age"]) ? strtotime($result["age"]) : null,
+				"type" => $result["is_live"] ? "Live" : "web",
+				"thumb" =>
+					isset($result["thumbnail"]["original"]) &&
+					$result["thumbnail"]["logo"] === false ?
+					[
+						"ratio" => "16:9",
+						"url" => $result["thumbnail"]["original"]
+					] :
+					[
+						"ratio" => null,
+						"url" => null
+					],
+				"sublink" => $sublinks,
+				"table" => []
+			];
+		}
+		
+		// parse videos
+		if(isset($json["videos"]["results"])){
+			
+			foreach($json["videos"]["results"] as $video){
+				
+				$out["video"][] = [
+					"title" => $this->titledots($video["title"]),
+					"description" => $this->titledots($video["description"]),
+					"date" => isset($video["age"]) ? strtotime($video["age"]) : null,
+					"duration" => isset($video["video"]["duration"]) ? $this->hms2int($video["video"]["duration"]) : null,
+					"views" => isset($video["video"]["views"]) ? (int)$video["video"]["views"] : null,
+					"thumb" =>
+						isset($video["thumbnail"]["original"]) ?
+						[
+							"ratio" => "16:9",
+							"url" => $video["thumbnail"]["original"]
+						] :
+						[
+							"ratio" => null,
+							"url" => null
+						],
+					"url" => $video["url"]
+				];
+			}
+		}
+		
+		// parse news
+		if(isset($json["news"]["results"])){
+			
+			foreach($json["news"]["results"] as $nw){
+				
+				$out["news"][] = [
+					"title" => $this->titledots($nw["title"]),
+					"description" =>
+						$this->titledots(
+							$this->fuckhtml
+							->getTextContent(
+								$nw["description"]
+							)
+						),
+					"date" => isset($nw["page_age"]) ? strtotime($nw["page_age"]) : null,
+					"thumb" =>
+						isset($nw["thumbnail"]["original"]) ?
+						[
+							"ratio" => "16:9",
+							"url" => $nw["thumbnail"]["original"]
+						] :
+						[
+							"ratio" => null,
+							"url" => null
+						],
+					"url" => $nw["url"]
+				];
+			}
+		}
+		
+		// parse infobox
+		if(isset($json["infobox"]["results"])){
+			
+			foreach($json["infobox"]["results"] as $info){
+				
+				$table = [];
+				$sublinks = [];
+				$description = [];
+				
+				$thumb =
+					isset($info["images"][0]["src"]) ?
+					$info["images"][0]["original"] : null;
+				
+				// dedup wikipedia entries
+				if($info["url"] !== null){
+					
+					$query1 = parse_url($info["url"]);
+					
+					if(str_contains($query1["host"], "wikipedia.org")){
+						
+						foreach($out["answer"] as $check){
+							
+							$query2 = parse_url($check["url"]);
+							
+							if(
+								str_contains($query2["host"], "wikipedia.org") &&
+								isset($query1["path"]) &&
+								isset($query2["path"]) &&
+								$query1["path"] == $query2["path"]
+							){ continue 2; }
+						}
+					}
+				}
+				
+				if(isset($info["description"])){
+					
+					$description[] = [
+						"type" => "quote",
+						"value" => $info["description"]
+					];
+				}
+				
+				if(isset($info["long_desc"])){
+					
+					$description[] = [
+						"type" => "text",
+						"value" => $this->titledots($info["long_desc"])
+					];
+				}
+				
+				// get table elements
+				if(isset($info["attributes"])){
+					foreach($info["attributes"] as $attribute){
+						
+						if(
+							isset($attribute[0]) &&
+							isset($attribute[1])
+						){
+							
+							$table[
+								$this->fuckhtml
+								->getTextContent(
+									$attribute[0]
+								)
+							] =
+								$this->fuckhtml
+								->getTextContent(
+									$attribute[1]
+								);
+						}
+					}
+				}
+				
+				if(isset($info["profiles"])){
+					
+					foreach($info["profiles"] as $sublink){
+						
+						$sublinks[$sublink["name"]] = $sublink["url"];
+					}
+				}
+				
+				if(isset($info["website_url"])){
+					
+					$sublinks["Website"] = $info["website_url"];
+				}
+				
+				$out["answer"][] = [
+					"title" => $info["title"],
+					"description" => $description,
+					"url" => isset($info["url"]) ? $info["url"] : null,
+					"thumb" => $thumb,
+					"table" => $table,
+					"sublink" => $sublinks
+				];
+			}
+		}
+		
+		// parse related searches
+		if(isset($json["query"]["related_queries"])){
+			
+			foreach($json["query"]["related_queries"] as $related){
+				
+				$out["related"][] = $related;
+			}
+		}
+		
+		// parse correction
+		if(isset($json["query"]["altered"])){
+			
+			$out["spelling"] = [
+				"type" => "including",
+				"using" => $json["query"]["altered"],
+				"correction" => $json["query"]["original"]
+			];
+		}
+		
+		// parse npt
+		if($json["query"]["more_results_available"]){
+			
+			if(!isset($filters["offset"])){
+				
+				$filters["offset"] = 1;
+			}else{
+				
+				$filters["offset"]++;
+			}
+			
+			$out["npt"] =
+				$this->backend->store(
+					json_encode($filters),
+					"web",
+					$proxy
+				);
+		}
+		
+		return $out;
+	}
+	
+	private function api_image($get){
+				
+		$keydata = $this->backend->get_key();
+		$proxy = $this->backend->get_ip($keydata["increment"]);
+		
+		if($get["npt"]){
+			
+			// no pagination support
+			//[$filters, $n] = $this->backend->get($get["npt"], "web");
+			//$filters = json_decode($filters, true);
+			
+		}else{
+			
+			if(strlen($get["s"]) === 0){
+				
+				throw new Exception("Search term is empty!");
+			}
+			
+			if(strlen($get["s"]) > 400){
+				
+				throw new Exception("Search term is too long!");
+			}
+			
+			// push filters
+			$nsfw = $get["nsfw"];
+			$country = $get["country"];
+			$spellcheck = $get["spellcheck"];
+			
+			$filters = [
+				"q" => $get["s"],
+				"count" => 200
+			];
+			
+			// spellcheck
+			if($spellcheck == "no"){
+				
+				$filters["spellcheck"] = "false";
+			}
+			
+			// country
+			if($country != "all"){
+				
+				$filters["country"] = strtoupper($country);
+			}
+			
+			switch($nsfw){
+				
+				case "yes": $filters["safesearch"] = "off"; break;
+				case "maybe": $filters["safesearch"] = "moderate"; break;
+				case "no": $filters["safesearch"] = "strict"; break;
+			}
+		}
+		
+		//$json = file_get_contents("scraper/brave-img.json");
+		
+		try{
+			$json =
+				$this->api_get(
+					$proxy,
+					$keydata["key"],
+					"https://api.search.brave.com/res/v1/images/search",
+					$filters
+				);
+			
+		}catch(Exception $error){
+			
+			throw new Exception("Could not fetch search page");
+		}
+		
+		$out = [
+			"status" => "ok",
+			"npt" => null,
+			"image" => []
+		];
+		
+		$json = json_decode($json, true);
+		
+		if($json === null){
+			
+			throw new Exception("Failed to decode JSON");
+		}
+		
+		if(isset($json["error"])){
+			
+			if(isset($json["error"]["detail"])){
+				
+				throw new Exception("Brave returned an error: {$json["error"]["detail"]}");
+			}
+			
+			throw new Exception("Brave returned an unknown error");
+		}
+		
+		if(!isset($json["results"])){
+			
+			throw new Exception("Brave did not return a results object");
+		}
+		
+		// parse web results
+		foreach($json["results"] as $result){
+			
+			$out["image"][] = [
+				"title" => $result["title"],
+				"source" => [
+					[
+						"url" => $result["properties"]["url"],
+						"width" => (int)$result["properties"]["width"],
+						"height" => (int)$result["properties"]["height"]
+					],
+					[
+						"url" => $result["thumbnail"]["src"],
+						"width" => (int)$result["thumbnail"]["width"],
+						"height" => (int)$result["thumbnail"]["height"]
+					]
+				],
+				"url" => $result["url"]
+			];
+		}
+		
+		return $out;
+	}
+	
+	private function api_video($get){
+				
+		$keydata = $this->backend->get_key();
+		$proxy = $this->backend->get_ip($keydata["increment"]);
+		
+		if($get["npt"]){
+			
+			[$filters, $n] = $this->backend->get($get["npt"], "videos");
+			$filters = json_decode($filters, true);
+			
+		}else{
+			
+			if(strlen($get["s"]) === 0){
+				
+				throw new Exception("Search term is empty!");
+			}
+			
+			if(strlen($get["s"]) > 600){
+				
+				throw new Exception("Search term is too long!");
+			}
+			
+			// push filters
+			$nsfw = $get["nsfw"];
+			$country = $get["country"];
+			$spellcheck = $get["spellcheck"];
+			
+			$filters = [
+				"q" => $get["s"],
+				"count" => 100
+			];
+			
+			// spellcheck
+			if($spellcheck == "no"){
+				
+				$filters["spellcheck"] = "false";
+			}
+			
+			// country
+			if($country != "all"){
+				
+				$filters["country"] = strtoupper($country);
+			}
+			
+			switch($nsfw){
+				
+				case "yes": $filters["safesearch"] = "off"; break;
+				case "maybe": $filters["safesearch"] = "moderate"; break;
+				case "no": $filters["safesearch"] = "strict"; break;
+			}
+		}
+		
+		//$json = file_get_contents("scraper/brave-video.json");
+		
+		try{
+			$json =
+				$this->api_get(
+					$proxy,
+					$keydata["key"],
+					"https://api.search.brave.com/res/v1/videos/search",
+					$filters
+				);
+			
+		}catch(Exception $error){
+			
+			throw new Exception("Could not fetch search page");
+		}
+		
+		$out = [
+			"status" => "ok",
+			"npt" => null,
+			"video" => [],
+			"author" => [],
+			"livestream" => [],
+			"playlist" => [],
+			"reel" => []
+		];
+		
+		$json = json_decode($json, true);
+		
+		if($json === null){
+			
+			throw new Exception("Failed to decode JSON");
+		}
+		
+		if(isset($json["error"])){
+			
+			if(isset($json["error"]["detail"])){
+				
+				throw new Exception("Brave returned an error: {$json["error"]["detail"]}");
+			}
+			
+			throw new Exception("Brave returned an unknown error");
+		}
+		
+		if(!isset($json["results"])){
+			
+			throw new Exception("Brave did not return a results object");
+		}
+		
+		// parse web results
+		foreach($json["results"] as $result){
+			
+			$out["video"][] = [
+				"title" => $result["title"],
+				"description" => isset($result["description"]) ? $this->titledots($result["description"]) : null,
+				"author" => [
+					"name" => isset($result["author"]["name"]) ? $result["author"]["name"] : null,
+					"url" => isset($result["author"]["url"]) ? $result["author"]["url"] : null,
+					"avatar" => null
+				],
+				"date" => isset($result["age"]) ? strtotime($result["age"]) : null,
+				"duration" => isset($result["video"]["duration"]) ? $this->hms2int($result["video"]["duration"]) : null,
+				"views" => null,
+				"thumb" =>
+					isset($result["thumbnail"]["original"]) ?
+					[
+						"ratio" => "16:9",
+						"url" => $result["thumbnail"]["original"]
+					] :
+					[
+						"ratio" => null,
+						"url" => null
+					],
+				"url" => $result["url"]
+			];
+		}
+		
+		if(count($out["video"]) >= 95){
+			
+			if(!isset($filters["offset"])){
+				
+				$filters["offset"] = 1;
+			}else{
+				
+				$filters["offset"]++;
+			}
+			
+			$out["npt"] =
+				$this->backend->store(
+					json_encode($filters),
+					"videos",
+					$proxy
+				);
+		}
+		
+		return $out;
+	}
+	
+	private function api_news($get){
+				
+		$keydata = $this->backend->get_key();
+		$proxy = $this->backend->get_ip($keydata["increment"]);
+		
+		if($get["npt"]){
+			
+			[$filters, $n] = $this->backend->get($get["npt"], "news");
+			$filters = json_decode($filters, true);
+			
+		}else{
+			
+			if(strlen($get["s"]) === 0){
+				
+				throw new Exception("Search term is empty!");
+			}
+			
+			if(strlen($get["s"]) > 400){
+				
+				throw new Exception("Search term is too long!");
+			}
+			
+			// push filters
+			$nsfw = $get["nsfw"];
+			$country = $get["country"];
+			$spellcheck = $get["spellcheck"];
+			
+			$filters = [
+				"q" => $get["s"],
+				"count" => 50
+			];
+			
+			// spellcheck
+			if($spellcheck == "no"){
+				
+				$filters["spellcheck"] = "false";
+			}
+			
+			// country
+			if($country != "all"){
+				
+				$filters["country"] = strtoupper($country);
+			}
+			
+			switch($nsfw){
+				
+				case "yes": $filters["safesearch"] = "off"; break;
+				case "maybe": $filters["safesearch"] = "moderate"; break;
+				case "no": $filters["safesearch"] = "strict"; break;
+			}
+		}
+		
+		//$json = file_get_contents("scraper/brave-news.json");
+		
+		try{
+			$json =
+				$this->api_get(
+					$proxy,
+					$keydata["key"],
+					"https://api.search.brave.com/res/v1/news/search",
+					$filters
+				);
+			
+		}catch(Exception $error){
+			
+			throw new Exception("Could not fetch search page");
+		}
+		
+		$out = [
+			"status" => "ok",
+			"npt" => null,
+			"news" => []
+		];
+		
+		$json = json_decode($json, true);
+		
+		if($json === null){
+			
+			throw new Exception("Failed to decode JSON");
+		}
+		
+		if(isset($json["error"])){
+			
+			if(isset($json["error"]["detail"])){
+				
+				throw new Exception("Brave returned an error: {$json["error"]["detail"]}");
+			}
+			
+			throw new Exception("Brave returned an unknown error");
+		}
+		
+		if(!isset($json["results"])){
+			
+			throw new Exception("Brave did not return a results object");
+		}
+		
+		// parse web results
+		foreach($json["results"] as $news){
+			
+			$out["news"][] = [
+				"title" => $news["title"],
+				"author" =>
+					isset($news["profile"]["name"]) ?
+					$news["profile"]["name"] : null,
+				"description" => $news["description"],
+				"date" => isset($news["age"]) ? strtotime($news["age"]) : null,
+				"thumb" =>
+					isset($news["thumbnail"]["src"]) ?
+					[
+						"ratio" => "16:9",
+						"url" => $news["thumbnail"]["src"]
+					] :
+					[
+						"ratio" => null,
+						"url" => null,
+					],
+				"url" => $news["url"]
+			];
+		}
+		
+		if(count($out["news"]) >= 50){
+			
+			if(!isset($filters["offset"])){
+				
+				$filters["offset"] = 1;
+			}else{
+				
+				$filters["offset"]++;
+			}
+			
+			$out["npt"] =
+				$this->backend->store(
+					json_encode($filters),
+					"news",
+					$proxy
+				);
 		}
 		
 		return $out;
