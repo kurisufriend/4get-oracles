@@ -22,7 +22,7 @@ class autocomplete{
 			"sc" => "",
 			"kagi" => "https://kagisuggest.com/api/autosuggest?q={searchTerms}",
 			"startpage" => "https://www.startpage.com/osuggestions?q={searchTerms}",
-			"yahoo" => "https://search.yahoo.com/sugg/gossip/gossip-us-ura/?output=sd1&command={searchTerms}",
+			"yahoo" => "https://search.yahoo.com/sugg/gossip/gossip-us-ura/?output=fxjson&command={searchTerms}",
 			"purili" => "https://puri.li/api/suggest?q={searchTerms}",
 			"coccoc" => "https://coccoc.com/composer/autocomplete?q={searchTerms}",
 			"naver" => "https://ac.search.naver.com/nx/ac?q={searchTerms}&st=100"
@@ -167,37 +167,6 @@ class autocomplete{
 					[
 						$_GET["s"],
 						$json
-					],
-					JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_IGNORE
-				);
-				break;
-			
-			case "yahoo":
-				$json = $this->get($this->scrapers[$scraper], $_GET["s"]);
-				
-				$json = json_decode($json, true);
-				if(
-					$json === null ||
-					!isset($json["r"][0]["k"])
-				){
-					
-					$this->doempty();
-				}
-				
-				$payload = [];
-				
-				foreach($json["r"] as $term){
-					
-					if(isset($term["k"])){
-						
-						$payload[] = $term["k"];
-					}
-				}
-				
-				echo json_encode(
-					[
-						$_GET["s"],
-						$payload
 					],
 					JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_IGNORE
 				);
