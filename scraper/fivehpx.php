@@ -241,7 +241,7 @@ class fivehpx{
 			
 			$small = $this->image_ratio(600, $image["width"], $image["height"]);
 			//$large = $this->image_ratio(2048, $image["width"], $image["height"]);
-			$large = $this->image_ratio(3840, $image["width"], $image["height"]);
+			$large = $this->image_ratio(1024, $image["width"], $image["height"]);
 			
 			// for some fuck ass reason the invalid signature error gives me the
 			// signature key they use, lol
@@ -265,9 +265,7 @@ class fivehpx{
 				$expiry = time() + 3600;
 				
 				$images[] = [
-					"url" =>
-						"https://cdn-resize-prod-com.500px.cloud/photo/{$image_id[1]}/0.jpg?s=4&expiry={$expiry}&sig=" .
-						hash("sha256", "67gfdsgf!5uiyoi3fdsphoto/{$image_id[1]}/0.jpg4{$expiry}"),
+					"url" => $image["urls"]["size_1024"],
 					"width" => $large[0] > $image["width"] ? $image["width"] : $large[0],
 					"height" => $large[1] > $image["height"] ? $image["height"] : $large[1]
 				];
