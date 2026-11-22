@@ -35,18 +35,21 @@ class ddg{
 			case self::req_web:
 				$headers =
 					["User-Agent: " . config::USER_AGENT,
-					"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+					"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 					"Accept-Language: en-US,en;q=0.9",
-					"Accept-Encoding: gzip",
+					"Accept-Encoding: gzip, deflate, br, zstd",
+					"Referer: https://duckduckgo.com/",
 					"DNT: 1",
 					"Sec-GPC: 1",
 					"Connection: keep-alive",
+					"Cookie: ah=wt-wt; bj=1; dcm=3; dcs=1; l=wt-wt; p=-2; ax=v556-4",
 					"Upgrade-Insecure-Requests: 1",
 					"Sec-Fetch-Dest: document",
 					"Sec-Fetch-Mode: navigate",
 					"Sec-Fetch-Site: same-origin",
 					"Sec-Fetch-User: ?1",
-					"Priority: u=0, i"];
+					"Priority: u=0, i",
+					"TE: trailers"];
 				break;
 			
 			case self::req_xhr:
@@ -367,6 +370,9 @@ class ddg{
 			
 			return $this->web_full($get, [$raw_data[1], $proxy]);
 		}else{
+			
+			// temporary fix
+			return $this->web_html($get);
 			
 			// we have $get["s"]
 			if(
