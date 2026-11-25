@@ -235,8 +235,7 @@ class frontend{
 	
 	public function drawtextresult($site, $greentext = null, $duration = null, $keywords, $tabindex = true, $customhtml = null){
 		
-		$payload =
-			'<div class="text-result">';
+		$payload = '<div class="text-result">';
 		
 		// add favicon, link and archive links
 		$payload .= $this->drawlink($site["url"]);
@@ -981,12 +980,6 @@ class frontend{
 							"title" => "Archive.ph"
 						],
 						[
-							"url" => "https://yandex.com/search/?text=" . urlencode("url:" . $link),
-							"favicon" => "yandex.com",
-							"favicon_alt" => "ya",
-							"title" => "Yandex cache"
-						],
-						[
 							"url" => "https://ghostarchive.org/search?term=" . $urlencode,
 							"favicon" => "ghostarchive.org",
 							"favicon_alt" => "gh",
@@ -1003,6 +996,12 @@ class frontend{
 							"favicon" => "megalodon.jp",
 							"favicon_alt" => "me",
 							"title" => "Megalodon"
+						],
+						[
+							"url" => "https://archive.wikiwix.com/cache/?url=" . $urlencode,
+							"favicon" => "archive.wikiwix.com",
+							"favicon_alt" => "ar",
+							"title" => "Wikiwix archive"
 						],
 						[
 							"url" => "https://www.webcitation.org/query?url=" . $urlencode,
