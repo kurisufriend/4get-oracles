@@ -307,7 +307,7 @@ class naver{
 		
 		$jsons =
 			preg_split(
-				'/entry\.bootstrap\(document\.getElementById\("[a-f0-9-r]+"\), ?/',
+				'/r\.bootstrap\(document\.getElementById\("[a-f0-9-r]+"\), ?/',
 				$html
 			);
 		
